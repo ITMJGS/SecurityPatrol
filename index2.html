@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0f2340">
+<title>Security Patrol</title>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  :root{
+    --navy:#0f2340; --navy2:#1b3a63; --gold:#f5b301; --bg:#eef2f7; --card:#fff; --text:#0f172a;
+    --muted:#64748b; --line:#e2e8f0; --ok:#15803d; --ok-bg:#dcfce7; --warn:#b45309; --warn-bg:#fef3c7;
+    --bad:#b91c1c; --bad-bg:#fee2e2; --radius:14px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  button,input,select,textarea{font:inherit;color:inherit}
+  .muted{color:var(--muted)} .small{font-size:13px}
+  .row{display:flex;align-items:center} .between{justify-content:space-between} .gap{gap:10px}
+  .wrap{max-width:860px;margin:0 auto;padding:0 16px}
+
+  /* ---------- Login ---------- */
+  .login{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 16px;
+    background:radial-gradient(circle at 20% 0%,#24497a 0,var(--navy) 55%)}
+  .login .box{width:100%;max-width:380px;background:#fff;border-radius:20px;padding:28px 24px;box-shadow:0 20px 50px rgba(0,0,0,.35)}
+  .logo{width:64px;height:64px;border-radius:18px;background:var(--navy);display:grid;place-items:center;margin:0 auto 12px;font-size:32px;border:3px solid var(--gold)}
+  .login h1{text-align:center;margin:0;font-size:22px} .login p.sub{text-align:center;margin:4px 0 22px}
+  .field{margin-bottom:14px} .lbl{display:block;font-size:13px;font-weight:600;margin:0 0 6px}
+  .inp{width:100%;padding:12px 14px;border:1.5px solid var(--line);border-radius:10px;background:#fff;outline:none}
+  .inp:focus{border-color:var(--navy2);box-shadow:0 0 0 3px rgba(27,58,99,.12)}
+  .link{background:none;border:0;color:var(--navy2);font-weight:600;cursor:pointer;padding:0;text-decoration:underline}
+
+  /* ---------- Buttons ---------- */
+  .btn{border:0;border-radius:11px;padding:12px 16px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+  .btn.primary{background:var(--navy);color:#fff} .btn.primary:active{background:var(--navy2)}
+  .btn.gold{background:var(--gold);color:var(--navy)}
+  .btn.ghost{background:#fff;border:1.5px solid var(--line);color:var(--text)}
+  .btn.danger{background:var(--bad-bg);color:var(--bad)}
+  .btn.full{width:100%} .btn.big{padding:15px 22px;font-size:16px}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn.sm{padding:7px 11px;font-size:13px;border-radius:9px}
+
+  /* ---------- App shell ---------- */
+  header.top{background:var(--navy);color:#fff;position:sticky;top:0;z-index:20}
+  header.top .wrap{display:flex;align-items:center;justify-content:space-between;height:60px}
+  .brand{display:flex;align-items:center;gap:10px} .brand .ic{font-size:24px}
+  .brand b{display:block;font-size:16px} .brand small{opacity:.75;font-size:12px}
+  .out{background:rgba(255,255,255,.12);color:#fff;border:0;border-radius:9px;padding:8px 12px;font-weight:600;cursor:pointer}
+  nav.tabs{background:var(--navy);position:sticky;top:60px;z-index:19}
+  nav.tabs .wrap{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}
+  nav.tabs button{background:none;border:0;color:rgba(255,255,255,.7);padding:10px 12px 12px;font-weight:600;white-space:nowrap;cursor:pointer;border-bottom:3px solid transparent}
+  nav.tabs button.on{color:#fff;border-bottom-color:var(--gold)}
+  main{padding:16px 0 110px}
+
+  .card{background:var(--card);border-radius:var(--radius);padding:18px;margin-bottom:14px;box-shadow:0 1px 3px rgba(15,23,42,.06)}
+  .card h2{margin:0 0 6px;font-size:18px}
+  .hero{text-align:center;padding:30px 20px}
+  .hero .big-ic{font-size:46px} .hero h2{margin-top:8px}
+  .sec{font-size:14px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:20px 2px 10px}
+  .empty{text-align:center;color:var(--muted);padding:28px 10px;background:#fff;border-radius:var(--radius);border:1.5px dashed var(--line)}
+
+  .count{font-size:30px;font-weight:800} .count span{font-size:16px;color:var(--muted);font-weight:600}
+  .bar-wrap{height:10px;background:#e8edf4;border-radius:99px;margin-top:12px;overflow:hidden}
+  .bar-fill{height:100%;background:linear-gradient(90deg,var(--gold),#f59e0b);border-radius:99px;transition:width .4s}
+  .scan-btn{width:100%;background:var(--gold);color:var(--navy);border:0;border-radius:var(--radius);padding:20px;font-size:18px;font-weight:800;
+    display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;box-shadow:0 6px 18px rgba(245,179,1,.35)}
+  .scan-btn span{font-size:26px}
+
+  .item{background:#fff;border-radius:12px;padding:12px 14px;margin-bottom:10px;border-left:5px solid var(--ok);display:grid;grid-template-columns:1fr auto;gap:6px 10px}
+  .item.warn{border-left-color:#f59e0b} .item.bad{border-left-color:var(--bad)}
+  .item b{font-size:15px} .item .cat{grid-column:1/-1;font-size:13px;color:#334155}
+  .item img{width:54px;height:54px;object-fit:cover;border-radius:8px;grid-column:1/-1}
+  .item .act{grid-column:1/-1;display:flex;gap:8px}
+  .badge{display:inline-block;padding:3px 9px;border-radius:99px;font-size:12px;font-weight:700;white-space:nowrap;align-self:start}
+  .badge.ok{background:var(--ok-bg);color:var(--ok)} .badge.warn{background:var(--warn-bg);color:var(--warn)} .badge.bad{background:var(--bad-bg);color:var(--bad)}
+  .badge.grey{background:#f1f5f9;color:#475569} .badge.navy{background:#e0e7f1;color:var(--navy)}
+
+  .actionbar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);padding:12px 16px calc(12px + env(safe-area-inset-bottom));z-index:15}
+  .actionbar .wrap{display:flex;gap:10px;padding:0} .actionbar .btn.primary{flex:1}
+
+  /* ---------- Modal ---------- */
+  .ov{position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:50;display:flex;align-items:flex-end;justify-content:center}
+  .sheet{background:#fff;width:100%;max-width:520px;border-radius:20px 20px 0 0;padding:22px 18px calc(18px + env(safe-area-inset-bottom));max-height:92vh;overflow:auto;animation:up .2s ease}
+  @media(min-width:640px){.ov{align-items:center}.sheet{border-radius:20px}}
+  @keyframes up{from{transform:translateY(30px);opacity:0}}
+  .sheet h3{margin:0 0 4px;font-size:18px}
+  .sheet .foot{display:flex;gap:10px;margin-top:18px} .sheet .foot .btn{flex:1}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{border:1.5px solid var(--line);background:#fff;border-radius:99px;padding:8px 14px;font-weight:600;cursor:pointer}
+  .chip.on.ok{background:var(--ok);border-color:var(--ok);color:#fff}
+  .chip.on.warn{background:#d97706;border-color:#d97706;color:#fff}
+  .chip.on.bad{background:var(--bad);border-color:var(--bad);color:#fff}
+  .foto-btn{display:flex;align-items:center;justify-content:center;min-height:80px;border:1.5px dashed #cbd5e1;border-radius:12px;cursor:pointer;color:var(--muted);font-weight:600;overflow:hidden}
+  .foto-btn img{max-width:100%;max-height:200px;display:block}
+  .info-list{margin:12px 0;padding:0;list-style:none} .info-list li{padding:6px 0 6px 28px;position:relative}
+  .info-list li:before{content:"✔";position:absolute;left:4px;color:var(--ok);font-weight:800}
+
+  /* ---------- Scanner ---------- */
+  .scanner{position:fixed;inset:0;background:#000;z-index:60;display:flex;flex-direction:column}
+  .scanner .top{display:flex;justify-content:space-between;align-items:center;color:#fff;padding:14px 16px}
+  .scanner .top button{background:rgba(255,255,255,.15);border:0;color:#fff;border-radius:99px;width:40px;height:40px;font-size:18px;cursor:pointer}
+  #reader{flex:1;width:100%;display:flex;align-items:center;justify-content:center}
+  #reader video{width:100%!important;height:auto!important;max-height:75vh;object-fit:cover}
+  .scanner .hint{color:#cbd5e1;text-align:center;padding:14px 16px 26px;font-size:14px}
+
+  /* ---------- Laporan ---------- */
+  .lap{background:#fff;border-radius:var(--radius);padding:20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(15,23,42,.08)}
+  .lap-head{display:flex;gap:12px;align-items:center;border-bottom:3px solid var(--navy);padding-bottom:12px}
+  .lap-head .lg{width:46px;height:46px;border-radius:12px;background:var(--navy);display:grid;place-items:center;font-size:24px;flex:none}
+  .lap-head h3{margin:0;font-size:16px;letter-spacing:.03em}
+  .lap-meta{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;margin:14px 0}
+  .lap-meta span{display:block;font-size:12px;color:var(--muted)} .lap-meta b{font-size:14px}
+  .lap-stat{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+  .lap-stat div{background:#f1f5f9;border-radius:10px;padding:10px;text-align:center}
+  .lap-stat b{display:block;font-size:20px} .lap-stat span{font-size:12px;color:var(--muted)}
+  .lap-stat .ok{background:var(--ok-bg)} .lap-stat .ok b{color:var(--ok)}
+  .lap-stat .warn{background:var(--warn-bg)} .lap-stat .warn b{color:var(--warn)}
+  .tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+  table{width:100%;border-collapse:collapse;font-size:13px;min-width:520px}
+  th{background:var(--navy);color:#fff;text-align:left;padding:8px 10px;font-weight:600}
+  td{padding:8px 10px;border-top:1px solid var(--line);vertical-align:top}
+  tr:nth-child(even) td{background:#f8fafc}
+  td a{color:var(--navy2);font-weight:600}
+  details{margin-top:12px;font-size:13px} summary{cursor:pointer;font-weight:600;color:var(--warn)}
+  .ttd{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:22px;text-align:center;font-size:13px}
+  .ttd .sp{height:54px}
+  .success{background:var(--ok-bg);color:var(--ok);border-radius:var(--radius);padding:14px 16px;font-weight:700;margin-bottom:14px;display:flex;gap:10px;align-items:center}
+
+  /* ---------- Users ---------- */
+  .user{display:flex;align-items:center;gap:12px;background:#fff;border-radius:12px;padding:12px 14px;margin-bottom:8px}
+  .avatar{width:42px;height:42px;border-radius:50%;background:#e0e7f1;color:var(--navy);display:grid;place-items:center;font-weight:800;flex:none}
+  .user .inf{flex:1;min-width:0} .user .inf b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .user.pending{border:1.5px solid #fcd34d;background:#fffbeb}
+
+  /* ---------- QR ---------- */
+  .qr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+  .qr-item{background:#fff;border-radius:12px;padding:14px 10px;text-align:center;border:1px solid var(--line)}
+  .qr-item .qr{display:flex;justify-content:center;margin-bottom:8px}
+  .qr-item b{display:block;font-size:13px} .qr-item small{color:var(--muted);font-size:11px}
+
+  /* ---------- Toast & loading ---------- */
+  #toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:80;display:flex;flex-direction:column;gap:8px;width:calc(100% - 32px);max-width:420px;pointer-events:none}
+  .t{background:var(--navy);color:#fff;padding:12px 16px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.25);font-weight:600;animation:up .2s}
+  .t.err{background:var(--bad)} .t.ok{background:var(--ok)}
+  #loading{position:fixed;inset:0;background:rgba(255,255,255,.75);z-index:90;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-weight:600}
+  .spin{width:38px;height:38px;border:4px solid #cbd5e1;border-top-color:var(--navy);border-radius:50%;animation:sp 1s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .loader{display:flex;justify-content:center;padding:30px}
+
+  /* ---------- Print ---------- */
+  @media print{
+    header.top,nav.tabs,.no-print,.actionbar,#toast{display:none!important}
+    html,body{background:#fff} main{padding:0} .wrap{max-width:none;padding:0}
+    .lap{box-shadow:none;border:1px solid #cbd5e1;break-inside:avoid;page-break-after:always}
+    .tbl-wrap{overflow:visible} table{min-width:0}
+    th{background:#0f2340!important;color:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .qr-grid{grid-template-columns:repeat(4,1fr)} .qr-item{break-inside:avoid;border:1px dashed #94a3b8}
+    details{display:block} details>*{display:block}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast"></div>
+<div id="loading"><div class="spin"></div><div id="loadTxt">Memuat...</div></div>
+
+<script>
+/* =====================================================================
+   KONFIGURASI
+   - Biarkan API_URL kosong bila aplikasi dibuka dari URL Web App Apps Script.
+   - Bila file ini di-host di luar (GitHub Pages/Netlify), isi dengan URL Web App
+     (https://script.google.com/macros/s/XXXX/exec).
+   ===================================================================== */
+const API_URL = '';
+const KONDISI = ['Aman', 'Ada Temuan', 'Butuh Tindakan'];
+const KLS = { 'Aman': 'ok', 'Ada Temuan': 'warn', 'Butuh Tindakan': 'bad' };
+
+const S = { token: null, user: null, cps: [], patroli: null, tab: 'patroli', form: null, lapTgl: null, users: [] };
+let scanner = null, scanSibuk = false;
+
+/* ---------------- Utilitas ---------------- */
+const $ = s => document.querySelector(s);
+const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const norm = v => String(v).trim().toLowerCase().replace(/\s+/g, ' ');
+const LS = {
+  get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } },
+  del(k) { try { localStorage.removeItem(k); } catch (e) {} }
+};
+const jam = iso => new Date(iso).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }).replace('.', ':');
+const tglIndo = iso => new Date(iso).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+const hariIni = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+const inisial = n => String(n || '?').trim().split(/\s+/).slice(0, 2).map(s => s[0]).join('').toUpperCase();
+
+function toast(msg, tipe) {
+  const el = document.createElement('div');
+  el.className = 't ' + (tipe || ''); el.textContent = msg;
+  $('#toast').appendChild(el); setTimeout(() => el.remove(), 3500);
+}
+function loading(on, txt) { $('#loading').style.display = on ? 'flex' : 'none'; $('#loadTxt').textContent = txt || 'Memuat...'; }
+function modal(html) {
+  tutupModal();
+  const ov = document.createElement('div'); ov.className = 'ov'; ov.id = 'ov';
+  ov.innerHTML = '<div class="sheet">' + html + '</div>';
+  ov.addEventListener('click', e => { if (e.target === ov) tutupModal(); });
+  document.body.appendChild(ov);
+}
+function tutupModal() { const o = $('#ov'); if (o) o.remove(); }
+
+/* ---------------- Koneksi ke Apps Script ---------------- */
+function call(action, payload) {
+  return new Promise((resolve, reject) => {
+    const selesai = r => {
+      if (r && r.ok) return resolve(r.data);
+      const msg = (r && r.error) || 'Tidak ada respon dari server.';
+      if (msg === 'SESI_HABIS') { sesiHabis(); return reject(new Error('Sesi berakhir, silakan login kembali.')); }
+      reject(new Error(msg));
+    };
+    if (window.google && google.script && google.script.run) {
+      google.script.run.withSuccessHandler(selesai).withFailureHandler(e => reject(new Error(e.message || e)))
+        .api(action, S.token, payload || {});
+    } else if (API_URL) {
+      fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action, token: S.token, payload: payload || {} }) })
+        .then(r => r.json()).then(selesai).catch(() => reject(new Error('Gagal terhubung. Periksa koneksi internet.')));
+    } else {
+      reject(new Error('API_URL belum diisi di index.html.'));
+    }
+  });
+}
+
+/* ---------------- Start ---------------- */
+(async function init() {
+  S.token = LS.get('sp_token');
+  if (!S.token) return viewLogin();
+  loading(true);
+  try {
+    S.user = await call('me');
+    await muatCP();
+    S.patroli = LS.get(kunciDraft());
+    viewApp();
+  } catch (e) { viewLogin(); }
+  loading(false);
+})();
+
+async function muatCP() { S.cps = await call('getCheckpoints'); }
+function kunciDraft() { return 'sp_draft_' + (S.user ? S.user.username : ''); }
+function simpanDraft() {
+  if (S.patroli && !LS.set(kunciDraft(), S.patroli)) toast('Penyimpanan sementara penuh (foto terlalu banyak). Segera kirim laporan.', 'err');
+}
+function sesiHabis() { S.token = null; LS.del('sp_token'); viewLogin(); toast('Sesi berakhir, silakan login kembali.', 'err'); }
+
+/* =====================================================================
+   LOGIN & DAFTAR
+   ===================================================================== */
+function viewLogin(daftar) {
+  $('#app').innerHTML = `
+  <div class="login"><div class="box">
+    <div class="logo">🛡️</div>
+    <h1>Security Patrol</h1>
+    <p class="sub muted">${daftar ? 'Daftar akun petugas baru' : 'Masuk untuk memulai patroli'}</p>
+    <form onsubmit="return ${daftar ? 'daftar' : 'masuk'}(event)">
+      ${daftar ? `<div class="field"><label class="lbl">Nama lengkap</label><input class="inp" id="lnama" required autocomplete="name"></div>` : ''}
+      <div class="field"><label class="lbl">Username</label><input class="inp" id="luser" required autocapitalize="none" autocomplete="username"></div>
+      <div class="field"><label class="lbl">Password</label><input class="inp" id="lpass" type="password" required autocomplete="${daftar ? 'new-password' : 'current-password'}"></div>
+      ${daftar ? `<div class="field"><label class="lbl">Ulangi password</label><input class="inp" id="lpass2" type="password" required></div>` : ''}
+      <button class="btn primary full big" type="submit">${daftar ? 'Kirim Pendaftaran' : 'Masuk'}</button>
+    </form>
+    <p class="small muted" style="text-align:center;margin:18px 0 0">
+      ${daftar ? 'Sudah punya akun? <button class="link" onclick="viewLogin()">Masuk</button>'
+               : 'Belum punya akun? <button class="link" onclick="viewLogin(true)">Daftar</button>'}
+    </p>
+  </div></div>`;
+}
+
+async function masuk(e) {
+  e.preventDefault(); loading(true, 'Memeriksa akun...');
+  try {
+    const r = await call('login', { username: $('#luser').value, password: $('#lpass').value });
+    S.token = r.token; S.user = r.user; LS.set('sp_token', r.token);
+    await muatCP();
+    S.patroli = LS.get(kunciDraft());
+    S.tab = 'patroli'; viewApp();
+    toast('Selamat datang, ' + S.user.nama, 'ok');
+  } catch (err) { toast(err.message, 'err'); }
+  loading(false); return false;
+}
+
+async function daftar(e) {
+  e.preventDefault();
+  if ($('#lpass').value !== $('#lpass2').value) { toast('Password tidak sama.', 'err'); return false; }
+  loading(true, 'Mengirim pendaftaran...');
+  try {
+    const msg = await call('register', { nama: $('#lnama').value, username: $('#luser').value, password: $('#lpass').value });
+    viewLogin(); toast(msg, 'ok');
+  } catch (err) { toast(err.message, 'err'); }
+  loading(false); return false;
+}
+
+function keluar() {
+  const lanjut = () => { call('logout').catch(() => {}); S.token = null; LS.del('sp_token'); tutupModal(); viewLogin(); };
+  if (S.patroli && S.patroli.items.length) {
+    modal(`<h3>Keluar aplikasi?</h3><p class="muted">Ada patroli yang belum dikirim. Draft tetap tersimpan di perangkat ini dan bisa dilanjutkan setelah login lagi.</p>
+      <div class="foot"><button class="btn ghost" onclick="tutupModal()">Batal</button><button class="btn primary" id="okKeluar">Keluar</button></div>`);
+    $('#okKeluar').onclick = lanjut;
+  } else lanjut();
+}
+
+/* =====================================================================
+   KERANGKA APLIKASI
+   ===================================================================== */
+function daftarTab() {
+  const r = S.user.role, t = [['patroli', '🛡️ Patroli']];
+  if (r === 'Admin' || r === 'Supervisor') t.push(['laporan', '📋 Laporan']);
+  if (r === 'Admin') t.push(['users', '👥 Pengguna'], ['qr', '🔳 QR Checkpoint']);
+  t.push(['akun', '⚙️ Akun']);
+  return t;
+}
+
+function viewApp() {
+  $('#app').innerHTML = `
+  <header class="top"><div class="wrap">
+    <div class="brand"><span class="ic">🛡️</span><div><b>Security Patrol</b><small>${esc(S.user.nama)} · ${esc(S.user.role)}</small></div></div>
+    <button class="out" onclick="keluar()">Keluar</button>
+  </div></header>
+  <nav class="tabs"><div class="wrap">${daftarTab().map(([k, l]) => `<button class="${S.tab === k ? 'on' : ''}" onclick="bukaTab('${k}')">${l}</button>`).join('')}</div></nav>
+  <main><div class="wrap" id="content"></div></main>`;
+  bukaTab(S.tab);
+}
+
+function bukaTab(k) {
+  if (!daftarTab().some(t => t[0] === k)) k = 'patroli';
+  S.tab = k;
+  document.querySelectorAll('nav.tabs button').forEach((b, i) => b.classList.toggle('on', daftarTab()[i][0] === k));
+  ({ patroli: viewPatroli, laporan: viewLaporan, users: viewUsers, qr: viewQR, akun: viewAkun })[k]();
+  window.scrollTo(0, 0);
+}
+
+/* =====================================================================
+   PATROLI
+   ===================================================================== */
+function viewPatroli() {
+  const c = $('#content');
+  if (!S.patroli) {
+    c.innerHTML = `<section class="card hero">
+      <div class="big-ic">🛡️</div>
+      <h2>Siap memulai patroli?</h2>
+      <p class="muted">${S.cps.length} checkpoint terdaftar. Scan QR di setiap titik, isi kondisi, lalu tekan <b>Kirim Laporan</b> di akhir patroli.</p>
+      <button class="btn primary big" onclick="mulaiPatroli()">Mulai Patroli</button>
+    </section>`;
+    return;
+  }
+  const p = S.patroli, n = p.items.length, tot = S.cps.length, pct = tot ? Math.round(n / tot * 100) : 0;
+  const daftarItem = p.items.map((it, i) => ({ it, i })).reverse().map(({ it, i }) => `
+    <div class="item ${KLS[it.kondisi]}">
+      <div><b>${esc(it.checkpoint)}</b><div class="muted small">${jam(it.waktu)} WIB</div></div>
+      <span class="badge ${KLS[it.kondisi]}">${esc(it.kondisi)}</span>
+      ${it.catatan ? `<div class="cat">📝 ${esc(it.catatan)}</div>` : ''}
+      ${it.foto ? `<img src="${it.foto}" alt="foto">` : ''}
+      <div class="act"><button class="btn ghost sm" onclick="formCP(${i})">Ubah</button><button class="btn danger sm" onclick="hapusItem(${i})">Hapus</button></div>
+    </div>`).join('');
+
+  c.innerHTML = `
+    <section class="card">
+      <div class="row between">
+        <div><div class="muted small">Patroli dimulai</div><b>${jam(p.mulai)} WIB</b><div class="muted small">${tglIndo(p.mulai)}</div></div>
+        <div class="count">${n}<span>/${tot}</span></div>
+      </div>
+      <div class="bar-wrap"><div class="bar-fill" style="width:${pct}%"></div></div>
+    </section>
+    <button class="scan-btn" onclick="mintaScan()"><span>📷</span> Scan QR Checkpoint</button>
+    <h3 class="sec">Checkpoint tercatat (${n})</h3>
+    ${n ? daftarItem : '<div class="empty">Belum ada checkpoint yang discan.<br>Tekan tombol kuning untuk mulai.</div>'}
+    <div class="actionbar"><div class="wrap">
+      <button class="btn ghost" onclick="batalPatroli()">Batalkan</button>
+      <button class="btn primary" ${n ? '' : 'disabled'} onclick="konfirmKirim()">📤 Kirim Laporan (${n})</button>
+    </div></div>`;
+}
+
+function mulaiPatroli() { S.patroli = { mulai: new Date().toISOString(), items: [] }; simpanDraft(); viewPatroli(); }
+
+function batalPatroli() {
+  modal(`<h3>Batalkan patroli?</h3><p class="muted">Semua data scan yang belum dikirim akan dihapus dari perangkat ini.</p>
+    <div class="foot"><button class="btn ghost" onclick="tutupModal()">Tidak</button><button class="btn danger" onclick="S.patroli=null;LS.del(kunciDraft());tutupModal();viewPatroli()">Ya, batalkan</button></div>`);
+}
+
+function hapusItem(i) {
+  modal(`<h3>Hapus checkpoint?</h3><p class="muted">${esc(S.patroli.items[i].checkpoint)}</p>
+    <div class="foot"><button class="btn ghost" onclick="tutupModal()">Batal</button><button class="btn danger" onclick="S.patroli.items.splice(${i},1);simpanDraft();tutupModal();viewPatroli()">Hapus</button></div>`);
+}
+
+/* ---------- Izin kamera & scanner (kamera belakang) ---------- */
+function mintaScan() {
+  if (LS.get('sp_cam_ok')) return bukaScanner();
+  modal(`<div style="text-align:center;font-size:42px">📷</div>
+    <h3 style="text-align:center">Izin Kamera Belakang</h3>
+    <p class="muted" style="text-align:center">Aplikasi perlu mengakses <b>kamera belakang</b> untuk membaca QR code di setiap checkpoint.</p>
+    <ul class="info-list small"><li>Kamera hanya aktif saat Anda menekan tombol scan</li><li>Tidak ada video yang direkam atau disimpan</li><li>Pilih <b>Izinkan / Allow</b> saat browser bertanya</li></ul>
+    <div class="foot"><button class="btn ghost" onclick="tutupModal()">Nanti</button><button class="btn gold" onclick="LS.set('sp_cam_ok',1);tutupModal();bukaScanner()">Izinkan Kamera</button></div>`);
+}
+
+async function bukaScanner() {
+  if (typeof Html5Qrcode === 'undefined') return toast('Library scanner gagal dimuat. Periksa koneksi internet.', 'err');
+  const el = document.createElement('div'); el.className = 'scanner'; el.id = 'scanner';
+  el.innerHTML = `<div class="top"><b>Scan QR Checkpoint</b><button onclick="tutupScanner()">✕</button></div>
+    <div id="reader"></div><div class="hint">Arahkan kamera belakang ke QR code checkpoint</div>`;
+  document.body.appendChild(el);
+  scanSibuk = false;
+  scanner = new Html5Qrcode('reader', { verbose: false });
+  const cfg = { fps: 10, qrbox: (w, h) => { const s = Math.floor(Math.min(w, h) * 0.7); return { width: s, height: s }; }, aspectRatio: 1 };
+  // Urutan percobaan: kamera belakang (pasti) -> kamera belakang (jika ada) -> kamera apa pun yang terdeteksi
+  const coba = [
+    () => scanner.start({ facingMode: { exact: 'environment' } }, cfg, hasilScan, () => {}),
+    () => scanner.start({ facingMode: 'environment' }, cfg, hasilScan, () => {}),
+    async () => {
+      const cams = await Html5Qrcode.getCameras();
+      if (!cams || !cams.length) throw new Error('NotFoundError: tidak ada kamera terdeteksi');
+      const belakang = cams.find(c => /back|rear|belakang|environment/i.test(c.label)) || cams[cams.length - 1];
+      return scanner.start(belakang.id, cfg, hasilScan, () => {});
+    }
+  ];
+  let errTerakhir;
+  for (const fn of coba) {
+    try { await fn(); return; } catch (e) { errTerakhir = e; }
+  }
+  await tutupScanner();
+  gagalKamera(errTerakhir);
+}
+
+/* Cadangan: ambil foto QR dengan aplikasi kamera bawaan HP, lalu baca QR dari foto */
+function scanDariFoto() {
+  tutupModal();
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*'; inp.setAttribute('capture', 'environment');
+  inp.onchange = async () => {
+    const f = inp.files[0]; if (!f) return;
+    loading(true, 'Membaca QR...');
+    const box = document.createElement('div'); box.id = 'qrfile'; box.style.display = 'none'; document.body.appendChild(box);
+    try {
+      const teks = await new Html5Qrcode('qrfile').scanFile(f, false);
+      loading(false); scanSibuk = false; hasilScan(teks);
+    } catch (e) {
+      loading(false);
+      modal(`<h3>QR tidak terbaca</h3><p class="muted">Pastikan QR terlihat jelas, tidak buram, dan memenuhi sebagian besar foto.</p>
+        <div class="foot"><button class="btn ghost" onclick="tutupModal()">Tutup</button><button class="btn gold" onclick="scanDariFoto()">Foto Ulang</button></div>`);
+    }
+    box.remove();
+  };
+  inp.click();
+}
+
+async function tutupScanner() {
+  try { if (scanner && scanner.isScanning) await scanner.stop(); scanner && scanner.clear(); } catch (e) {}
+  scanner = null; const el = $('#scanner'); if (el) el.remove();
+}
+
+function gagalKamera(err) {
+  const m = String(err && (err.name || err.message || err));
+  LS.del('sp_cam_ok');
+  let pesan = 'Kamera tidak dapat dibuka.';
+  if (/NotAllowed|Permission/i.test(m)) pesan = 'Izin kamera ditolak. Buka pengaturan situs di browser (ikon 🔒 di address bar) lalu izinkan Kamera, kemudian coba lagi.';
+  else if (/NotFound|Overconstrained/i.test(m)) pesan = 'Tidak ada kamera yang terdeteksi. Jika memakai laptop/PC, pastikan webcam terpasang dan aktif. Di HP, tutup aplikasi lain yang sedang memakai kamera.';
+  else if (/NotReadable|TrackStart/i.test(m)) pesan = 'Kamera sedang dipakai aplikasi lain. Tutup aplikasi tersebut lalu coba lagi.';
+  else if (!window.isSecureContext) pesan = 'Kamera hanya bisa dipakai di alamat HTTPS.';
+  modal(`<h3>Kamera tidak tersedia</h3><p class="muted">${esc(pesan)}</p>
+    <p class="small muted">Sebagai gantinya, Anda bisa memotret QR dengan kamera HP lalu aplikasi akan membacanya.</p>
+    <p class="small muted">Detail: ${esc(m)}</p>
+    <div class="foot"><button class="btn ghost" onclick="tutupModal()">Tutup</button><button class="btn gold" onclick="scanDariFoto()">📸 Scan dari Foto</button></div>`);
+}
+
+async function hasilScan(teks) {
+  if (scanSibuk) return; scanSibuk = true;
+  try { navigator.vibrate && navigator.vibrate(120); } catch (e) {}
+  await tutupScanner();
+  const cp = S.cps.find(c => norm(c) === norm(teks));
+  if (!cp) {
+    modal(`<h3>QR tidak dikenali</h3><p class="muted">Isi QR: <b>${esc(teks)}</b><br>QR ini tidak terdaftar sebagai checkpoint.</p>
+      <div class="foot"><button class="btn ghost" onclick="tutupModal()">Tutup</button><button class="btn gold" onclick="tutupModal();bukaScanner()">Scan Lagi</button></div>`);
+    return;
+  }
+  const idx = S.patroli.items.findIndex(i => norm(i.checkpoint) === norm(cp));
+  if (idx >= 0) {
+    modal(`<h3>Sudah discan</h3><p class="muted"><b>${esc(cp)}</b> sudah tercatat pukul ${jam(S.patroli.items[idx].waktu)} WIB.</p>
+      <div class="foot"><button class="btn ghost" onclick="tutupModal()">Tutup</button><button class="btn primary" onclick="formCP(${idx})">Ubah Data</button></div>`);
+    return;
+  }
+  formCP(-1, cp);
+}
+
+/* ---------- Form kondisi checkpoint ---------- */
+function formCP(idx, cpBaru) {
+  const ex = idx >= 0 ? S.patroli.items[idx] : null;
+  S.form = ex ? Object.assign({ idx }, ex) : { idx: -1, checkpoint: cpBaru, waktu: new Date().toISOString(), kondisi: 'Aman', catatan: '', foto: '', lat: '', lng: '' };
+  if (!ex && navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(p => { if (S.form) { S.form.lat = p.coords.latitude.toFixed(6); S.form.lng = p.coords.longitude.toFixed(6); } }, () => {}, { enableHighAccuracy: true, timeout: 8000 });
+  }
+  modal(`<div class="badge navy" style="margin-bottom:8px">✅ QR terverifikasi</div>
+    <h3>📍 ${esc(S.form.checkpoint)}</h3>
+    <p class="muted small" style="margin-top:0">Discan pukul ${jam(S.form.waktu)} WIB</p>
+    <label class="lbl">Kondisi</label>
+    <div class="chips" id="chips">${KONDISI.map(k => `<button type="button" class="chip ${KLS[k]} ${k === S.form.kondisi ? 'on' : ''}" data-k="${k}">${k}</button>`).join('')}</div>
+    <label class="lbl" style="margin-top:14px">Catatan <span id="wjb" class="muted small"></span></label>
+    <textarea class="inp" id="fcat" rows="3" placeholder="Contoh: Pintu exit terkunci, lampu menyala normal">${esc(S.form.catatan)}</textarea>
+    <label class="lbl" style="margin-top:14px">Foto (opsional)</label>
+    <label class="foto-btn"><input type="file" accept="image/*" capture="environment" id="ffoto" hidden>
+      <span id="fprev">${S.form.foto ? `<img src="${S.form.foto}">` : '📸 Ambil foto dengan kamera'}</span></label>
+    <div class="foot"><button class="btn ghost" onclick="tutupModal()">Batal</button><button class="btn primary" onclick="simpanCP()">Simpan</button></div>`);
+  const tandaWajib = () => $('#wjb').textContent = S.form.kondisi === 'Aman' ? '(opsional)' : '(wajib diisi)';
+  tandaWajib();
+  $('#chips').onclick = e => {
+    const b = e.target.closest('.chip'); if (!b) return;
+    S.form.kondisi = b.dataset.k;
+    document.querySelectorAll('#chips .chip').forEach(x => x.classList.toggle('on', x === b));
+    tandaWajib();
+  };
+  $('#ffoto').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    $('#fprev').textContent = 'Memproses foto...';
+    try { S.form.foto = await kompres(f); $('#fprev').innerHTML = `<img src="${S.form.foto}">`; }
+    catch (err) { $('#fprev').textContent = 'Foto gagal diproses, coba lagi.'; }
+  };
+}
+
+function kompres(file) {
+  return new Promise((res, rej) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const max = 1024; let w = img.width, h = img.height;
+      if (w > h && w > max) { h = h * max / w; w = max; } else if (h > max) { w = w * max / h; h = max; }
+      const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+      cv.getContext('2d').drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url); res(cv.toDataURL('image/jpeg', 0.6));
+    };
+    img.onerror = rej; img.src = url;
+  });
+}
+
+function simpanCP() {
+  const f = S.form; f.catatan = $('#fcat').value.trim();
+  if (f.kondisi !== 'Aman' && !f.catatan) { toast('Catatan wajib diisi bila ada temuan.', 'err'); $('#fcat').focus(); return; }
+  const item = { checkpoint: f.checkpoint, waktu: f.waktu, kondisi: f.kondisi, catatan: f.catatan, foto: f.foto, lat: f.lat, lng: f.lng };
+  if (f.idx >= 0) S.patroli.items[f.idx] = item; else S.patroli.items.push(item);
+  simpanDraft(); S.form = null; tutupModal(); viewPatroli();
+  toast(item.checkpoint + ' tercatat', 'ok');
+}
+
+/* ---------- Kirim laporan ---------- */
+function konfirmKirim() {
+  const it = S.patroli.items, tem = it.filter(i => i.kondisi !== 'Aman').length, sisa = S.cps.length - it.length;
+  modal(`<h3>Kirim laporan patroli?</h3>
+    <div class="lap-stat" style="margin-top:14px">
+      <div><b>${it.length}</b><span>Discan</span></div>
+      <div class="warn"><b>${tem}</b><span>Temuan</span></div>
+      <div><b>${sisa}</b><span>Belum dikunjungi</span></div>
+    </div>
+    <p class="muted small">Setelah dikirim, data tersimpan ke spreadsheet dan tidak bisa diubah dari aplikasi.</p>
+    <div class="foot"><button class="btn ghost" onclick="tutupModal()">Periksa lagi</button><button class="btn primary" onclick="kirim()">📤 Kirim Sekarang</button></div>`);
+}
+
+async function kirim() {
+  tutupModal(); loading(true, 'Mengirim laporan...');
+  try {
+    const hasil = await call('submitPatroli', { mulai: S.patroli.mulai, items: S.patroli.items });
+    S.patroli = null; LS.del(kunciDraft());
+    $('#content').innerHTML = `<div class="success no-print">✅ Laporan berhasil dikirim ke spreadsheet.</div>
+      ${kartuLaporan(hasil)}
+      <div class="row gap no-print"><button class="btn ghost" style="flex:1" onclick="window.print()">🖨️ Cetak / PDF</button><button class="btn primary" style="flex:1" onclick="viewPatroli()">Selesai</button></div>`;
+    window.scrollTo(0, 0);
+  } catch (e) { toast('Gagal mengirim: ' + e.message + ' Data tetap tersimpan, coba kirim lagi.', 'err'); }
+  loading(false);
+}
+
+/* =====================================================================
+   FORMAT LAPORAN (dipakai setelah kirim & di menu Laporan)
+   ===================================================================== */
+function kartuLaporan(g) {
+  const aman = g.items.filter(i => i.kondisi === 'Aman').length, tem = g.items.length - aman;
+  return `<article class="lap">
+    <div class="lap-head"><div class="lg">🛡️</div><div><h3>LAPORAN PATROLI SECURITY</h3><div class="muted small">No. ${esc(g.id)}</div></div></div>
+    <div class="lap-meta">
+      <div><span>Petugas</span><b>${esc(g.nama)}</b></div>
+      <div><span>Tanggal</span><b>${esc(g.tanggal)}</b></div>
+      <div><span>Waktu patroli</span><b>${esc(g.mulai)} – ${esc(g.selesai)} WIB</b></div>
+      <div><span>Dikirim</span><b>${esc(g.dikirim)}</b></div>
+    </div>
+    <div class="lap-stat">
+      <div><b>${g.items.length}/${g.total}</b><span>Checkpoint</span></div>
+      <div class="ok"><b>${aman}</b><span>Aman</span></div>
+      <div class="warn"><b>${tem}</b><span>Temuan</span></div>
+    </div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th style="width:36px">No</th><th style="width:60px">Jam</th><th>Checkpoint</th><th style="width:120px">Kondisi</th><th>Keterangan</th></tr></thead>
+      <tbody>${g.items.map((i, n) => `<tr>
+        <td>${n + 1}</td><td>${esc(i.jam)}</td><td>${esc(i.checkpoint)}</td>
+        <td><span class="badge ${KLS[i.kondisi] || 'grey'}">${esc(i.kondisi)}</span></td>
+        <td>${esc(i.catatan || '-')}${i.foto ? ` · <a href="${esc(i.foto)}" target="_blank" rel="noopener">Foto</a>` : ''}</td></tr>`).join('')}</tbody>
+    </table></div>
+    ${g.terlewat && g.terlewat.length ? `<details><summary>Checkpoint belum dikunjungi (${g.terlewat.length})</summary><p class="muted">${g.terlewat.map(esc).join(' · ')}</p></details>` : ''}
+    <div class="ttd">
+      <div>Petugas Patroli<div class="sp"></div><b>${esc(g.nama)}</b></div>
+      <div>Mengetahui, Supervisor<div class="sp"></div><b>(..............................)</b></div>
+    </div>
+  </article>`;
+}
+
+async function viewLaporan() {
+  const t = S.lapTgl || hariIni();
+  $('#content').innerHTML = `<section class="card no-print">
+      <h2>Laporan Patroli</h2><p class="muted small" style="margin-top:0">Pilih tanggal untuk melihat semua laporan yang masuk.</p>
+      <div class="row gap"><input class="inp" type="date" id="ltgl" value="${t}" style="flex:1"><button class="btn primary" onclick="muatLaporan()">Tampilkan</button></div>
+    </section><div id="lapList"></div>`;
+  muatLaporan();
+}
+
+async function muatLaporan() {
+  S.lapTgl = $('#ltgl').value || hariIni();
+  const box = $('#lapList'); box.innerHTML = '<div class="loader"><div class="spin"></div></div>';
+  try {
+    const list = await call('getLaporan', { tanggal: S.lapTgl });
+    if (!list.length) { box.innerHTML = '<div class="empty">Belum ada laporan pada tanggal ini.</div>'; return; }
+    const tem = list.reduce((a, g) => a + g.items.filter(i => i.kondisi !== 'Aman').length, 0);
+    box.innerHTML = `<div class="card no-print row between"><div><b>${list.length} patroli</b> <span class="muted">· ${tem} temuan</span></div>
+        <button class="btn ghost sm" onclick="window.print()">🖨️ Cetak semua</button></div>` + list.map(kartuLaporan).join('');
+  } catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+
+/* =====================================================================
+   PENGGUNA (ADMIN)
+   ===================================================================== */
+async function viewUsers() {
+  const c = $('#content'); c.innerHTML = '<div class="loader"><div class="spin"></div></div>';
+  try { S.users = await call('listUsers'); } catch (e) { c.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+  const pend = S.users.filter(u => u.status === 'Menunggu'), lain = S.users.filter(u => u.status !== 'Menunggu');
+  const kartu = u => `<div class="user ${u.status === 'Menunggu' ? 'pending' : ''}">
+      <div class="avatar">${esc(inisial(u.nama))}</div>
+      <div class="inf"><b>${esc(u.nama)}</b><span class="muted small">@${esc(u.username)}</span>
+        <div style="margin-top:4px"><span class="badge navy">${esc(u.role)}</span> <span class="badge ${u.status === 'Aktif' ? 'ok' : u.status === 'Menunggu' ? 'warn' : 'grey'}">${esc(u.status)}</span></div></div>
+      ${u.status === 'Menunggu'
+        ? `<div class="row gap"><button class="btn primary sm" onclick="setujui('${esc(u.username)}')">Setujui</button><button class="btn ghost sm" onclick="kelolaUser('${esc(u.username)}')">⋯</button></div>`
+        : `<button class="btn ghost sm" onclick="kelolaUser('${esc(u.username)}')">Kelola</button>`}
+    </div>`;
+  c.innerHTML = `<section class="card row between"><div><h2>Pengguna</h2><span class="muted small">${S.users.length} akun terdaftar</span></div>
+      <button class="btn primary sm" onclick="tambahUser()">+ Tambah</button></section>
+    ${pend.length ? `<h3 class="sec">Menunggu persetujuan (${pend.length})</h3>${pend.map(kartu).join('')}` : ''}
+    <h3 class="sec">Semua pengguna</h3>${lain.map(kartu).join('') || '<div class="empty">Belum ada pengguna.</div>'}`;
+}
+
+async function aksiUser(action, payload, pesanOk) {
+  loading(true, 'Menyimpan...');
+  try { const m = await call(action, payload); tutupModal(); toast(pesanOk || m, 'ok'); await viewUsers(); }
+  catch (e) { toast(e.message, 'err'); }
+  loading(false);
+}
+function setujui(u) { aksiUser('saveUser', { username: u, status: 'Aktif' }, 'Akun @' + u + ' disetujui, sekarang bisa login.'); }
+
+const opsi = (arr, v) => arr.map(x => `<option ${x === v ? 'selected' : ''}>${x}</option>`).join('');
+
+function kelolaUser(username) {
+  const u = S.users.find(x => x.username === username); if (!u) return;
+  modal(`<h3>Kelola @${esc(u.username)}</h3><p class="muted small" style="margin-top:0">Dibuat ${esc(u.dibuat)} · Login terakhir ${esc(u.loginTerakhir || '-')}</p>
+    <div class="field"><label class="lbl">Nama</label><input class="inp" id="unama" value="${esc(u.nama)}"></div>
+    <div class="row gap"><div class="field" style="flex:1"><label class="lbl">Role</label><select class="inp" id="urole">${opsi(['Admin', 'Supervisor', 'Petugas'], u.role)}</select></div>
+      <div class="field" style="flex:1"><label class="lbl">Status</label><select class="inp" id="ustatus">${opsi(['Aktif', 'Menunggu', 'Nonaktif'], u.status)}</select></div></div>
+    <button class="btn primary full" onclick="aksiUser('saveUser',{username:'${esc(u.username)}',nama:$('#unama').value,role:$('#urole').value,status:$('#ustatus').value})">Simpan Perubahan</button>
+    <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
+    <div class="field"><label class="lbl">Reset password</label><div class="row gap"><input class="inp" id="upass" type="text" placeholder="Password baru (min. 6)"><button class="btn ghost" onclick="aksiUser('resetPassword',{username:'${esc(u.username)}',password:$('#upass').value})">Reset</button></div></div>
+    <button class="btn danger full" onclick="hapusUser('${esc(u.username)}')">Hapus Pengguna</button>`);
+}
+
+function hapusUser(u) {
+  modal(`<h3>Hapus @${esc(u)}?</h3><p class="muted">Akun akan dihapus permanen. Laporan yang sudah dikirim tetap tersimpan.</p>
+    <div class="foot"><button class="btn ghost" onclick="tutupModal()">Batal</button><button class="btn danger" onclick="aksiUser('deleteUser',{username:'${esc(u)}'})">Hapus</button></div>`);
+}
+
+function tambahUser() {
+  modal(`<h3>Tambah Pengguna</h3>
+    <div class="field"><label class="lbl">Nama lengkap</label><input class="inp" id="nnama"></div>
+    <div class="field"><label class="lbl">Username</label><input class="inp" id="nuser" autocapitalize="none"></div>
+    <div class="field"><label class="lbl">Password</label><input class="inp" id="npass" type="text"></div>
+    <div class="field"><label class="lbl">Role</label><select class="inp" id="nrole">${opsi(['Petugas', 'Supervisor', 'Admin'], 'Petugas')}</select></div>
+    <div class="foot"><button class="btn ghost" onclick="tutupModal()">Batal</button>
+      <button class="btn primary" onclick="aksiUser('saveUser',{baru:true,nama:$('#nnama').value,username:$('#nuser').value,password:$('#npass').value,role:$('#nrole').value,status:'Aktif'})">Simpan</button></div>`);
+}
+
+/* =====================================================================
+   QR CHECKPOINT (ADMIN)
+   ===================================================================== */
+function viewQR() {
+  $('#content').innerHTML = `<section class="card no-print">
+      <h2>QR Code Checkpoint</h2>
+      <p class="muted small" style="margin-top:0">Isi setiap QR sama persis dengan nama kolom checkpoint di spreadsheet. Cetak, lalu tempel di lokasi masing-masing. Untuk menambah checkpoint, tambahkan kolom baru di baris judul Sheet1.</p>
+      <div class="row gap"><input class="inp" id="qcari" placeholder="Cari checkpoint..." style="flex:1"><button class="btn primary" onclick="window.print()">🖨️ Cetak</button></div>
+    </section>
+    <div class="qr-grid" id="qrgrid">${S.cps.map((c, i) => `<div class="qr-item" data-n="${esc(norm(c))}"><div class="qr" id="qr${i}"></div><b>${esc(c)}</b><small>Security Patrol · Checkpoint</small></div>`).join('')}</div>`;
+  if (typeof QRCode === 'undefined') return toast('Library QR gagal dimuat.', 'err');
+  S.cps.forEach((c, i) => new QRCode(document.getElementById('qr' + i), { text: c, width: 140, height: 140, correctLevel: QRCode.CorrectLevel.M }));
+  $('#qcari').oninput = e => { const q = norm(e.target.value); document.querySelectorAll('.qr-item').forEach(el => el.style.display = el.dataset.n.includes(q) ? '' : 'none'); };
+}
+
+/* =====================================================================
+   AKUN
+   ===================================================================== */
+function viewAkun() {
+  $('#content').innerHTML = `<section class="card">
+      <div class="row gap"><div class="avatar">${esc(inisial(S.user.nama))}</div><div><b>${esc(S.user.nama)}</b><div class="muted small">@${esc(S.user.username)} · ${esc(S.user.role)}</div></div></div>
+    </section>
+    <section class="card"><h2>Ganti Password</h2>
+      <div class="field"><label class="lbl">Password lama</label><input class="inp" id="plama" type="password"></div>
+      <div class="field"><label class="lbl">Password baru</label><input class="inp" id="pbaru" type="password"></div>
+      <button class="btn primary full" onclick="gantiPw()">Simpan Password</button>
+    </section>`;
+}
+async function gantiPw() {
+  loading(true, 'Menyimpan...');
+  try { toast(await call('gantiPassword', { lama: $('#plama').value, baru: $('#pbaru').value }), 'ok'); viewAkun(); }
+  catch (e) { toast(e.message, 'err'); }
+  loading(false);
+}
+</script>
+</body>
+</html>
