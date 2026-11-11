@@ -140,7 +140,9 @@
 
   /* ---------- Users ---------- */
   .user{display:flex;align-items:center;gap:12px;background:#fff;border-radius:12px;padding:12px 14px;margin-bottom:8px}
-  .avatar{width:42px;height:42px;border-radius:50%;background:#e0e7f1;color:var(--navy);display:grid;place-items:center;font-weight:800;flex:none}
+  .avatar{width:42px;height:42px;border-radius:50%;background:#e0e7f1;color:var(--navy);display:grid;place-items:center;font-weight:800;flex:none;overflow:hidden}
+  .avatar img{width:100%;height:100%;object-fit:cover;display:block}
+  .avatar.xl{width:96px;height:96px;font-size:32px}
   .user .inf{flex:1;min-width:0} .user .inf b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .user.pending{border:1.5px solid #fcd34d;background:#fffbeb}
 
@@ -587,15 +589,15 @@ function renderFoto() {
 }
 function hapusFoto(i) { S.form.fotos.splice(i, 1); renderFoto(); }
 
-function kompres(file) {
+function kompres(file, max = 1280, q = 0.6) {
   return new Promise((res, rej) => {
     const img = new Image(), url = URL.createObjectURL(file);
     img.onload = () => {
-      const max = 1280; let w = img.width, h = img.height;
+      let w = img.width, h = img.height;
       if (w > h && w > max) { h = h * max / w; w = max; } else if (h > max) { w = w * max / h; h = max; }
       const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
       cv.getContext('2d').drawImage(img, 0, 0, w, h);
-      URL.revokeObjectURL(url); res(cv.toDataURL('image/jpeg', 0.6));
+      URL.revokeObjectURL(url); res(cv.toDataURL('image/jpeg', q));
     };
     img.onerror = rej; img.src = url;
   });
@@ -730,7 +732,7 @@ async function viewUsers() {
   try { S.users = await call('listUsers'); } catch (e) { c.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
   const pend = S.users.filter(u => u.status === 'Menunggu'), lain = S.users.filter(u => u.status !== 'Menunggu');
   const kartu = u => `<div class="user ${u.status === 'Menunggu' ? 'pending' : ''}">
-      <div class="avatar">${esc(inisial(u.nama))}</div>
+      ${avatarHtml(u.nama, u.foto)}
       <div class="inf"><b>${esc(u.nama)}</b><span class="muted small">@${esc(u.username)}</span>
         <div style="margin-top:4px"><span class="badge navy">${esc(u.role)}</span> <span class="badge ${u.status === 'Aktif' ? 'ok' : u.status === 'Menunggu' ? 'warn' : 'grey'}">${esc(u.status)}</span></div></div>
       ${u.status === 'Menunggu'
@@ -755,7 +757,9 @@ const opsi = (arr, v) => arr.map(x => `<option ${x === v ? 'selected' : ''}>${x}
 
 function kelolaUser(username) {
   const u = S.users.find(x => x.username === username); if (!u) return;
-  modal(`<h3>Kelola @${esc(u.username)}</h3><p class="muted small" style="margin-top:0">Dibuat ${esc(u.dibuat)} · Login terakhir ${esc(u.loginTerakhir || '-')}</p>
+  modal(`<div class="row gap" style="align-items:center;margin-bottom:6px">${avatarHtml(u.nama, u.foto)}
+      <div><h3 style="margin:0">Kelola @${esc(u.username)}</h3><p class="muted small" style="margin:2px 0 0">Dibuat ${esc(u.dibuat)} · Login terakhir ${esc(u.loginTerakhir || '-')}</p></div></div>
+    <div style="margin:6px 0 14px">${tombolFotoProfil(u.username, !!u.foto)}</div>
     <div class="field"><label class="lbl">Nama</label><input class="inp" id="unama" value="${esc(u.nama)}"></div>
     <div class="row gap"><div class="field" style="flex:1"><label class="lbl">Role</label><select class="inp" id="urole">${opsi(['Admin', 'Supervisor', 'Petugas'], u.role)}</select></div>
       <div class="field" style="flex:1"><label class="lbl">Status</label><select class="inp" id="ustatus">${opsi(['Aktif', 'Menunggu', 'Nonaktif'], u.status)}</select></div></div>
@@ -798,9 +802,35 @@ function viewQR() {
 /* =====================================================================
    AKUN
    ===================================================================== */
+/* Avatar: foto profil bila ada, jika tidak inisial nama */
+function avatarHtml(nama, foto, ukuran) {
+  return `<div class="avatar ${ukuran || ''}">${foto ? `<img src="${esc(foto)}" alt="" referrerpolicy="no-referrer">` : esc(inisial(nama))}</div>`;
+}
+
+/* Tombol unggah foto profil (dipakai di menu Akun dan di Kelola pengguna) */
+function tombolFotoProfil(username, sudahAda) {
+  return `<label class="btn ghost sm" style="cursor:pointer">📷 ${sudahAda ? 'Ganti foto profil' : 'Tambah foto profil'}
+    <input type="file" accept="image/*" hidden onchange="gantiFotoProfil(this,'${esc(username)}')"></label>`;
+}
+
+async function gantiFotoProfil(inp, username) {
+  const f = inp.files[0]; inp.value = ''; if (!f) return;
+  loading(true, 'Mengunggah foto profil...');
+  try {
+    const url = await call('setFotoProfil', { username, data: await kompres(f, 512, 0.7) });
+    if (S.user && S.user.username === username) S.user.foto = url;
+    toast('Foto profil diperbarui.', 'ok');
+    if (S.tab === 'akun') viewAkun(); else if (S.tab === 'users') viewUsers();
+    if (document.querySelector('#ov')) tutupModal();
+  } catch (e) { toast(e.message, 'err'); }
+  loading(false);
+}
+
 function viewAkun() {
-  $('#content').innerHTML = `<section class="card">
-      <div class="row gap"><div class="avatar">${esc(inisial(S.user.nama))}</div><div><b>${esc(S.user.nama)}</b><div class="muted small">@${esc(S.user.username)} · ${esc(S.user.role)}</div></div></div>
+  $('#content').innerHTML = `<section class="card row gap" style="align-items:center">
+      ${avatarHtml(S.user.nama, S.user.foto, 'xl')}
+      <div style="flex:1;min-width:0"><b>${esc(S.user.nama)}</b><div class="muted small">@${esc(S.user.username)} · ${esc(S.user.role)}</div>
+        <div style="margin-top:8px">${tombolFotoProfil(S.user.username, !!S.user.foto)}</div></div>
     </section>
     <section class="card"><h2>Ganti Password</h2>
       <div class="field"><label class="lbl">Password lama</label><input class="inp" id="plama" type="password"></div>
