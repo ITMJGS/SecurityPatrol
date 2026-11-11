@@ -91,8 +91,16 @@
   .chip.on.ok{background:var(--ok);border-color:var(--ok);color:#fff}
   .chip.on.warn{background:#d97706;border-color:#d97706;color:#fff}
   .chip.on.bad{background:var(--bad);border-color:var(--bad);color:#fff}
-  .foto-btn{display:flex;align-items:center;justify-content:center;min-height:80px;border:1.5px dashed #cbd5e1;border-radius:12px;cursor:pointer;color:var(--muted);font-weight:600;overflow:hidden}
-  .foto-btn img{max-width:100%;max-height:200px;display:block}
+  .foto-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .foto-cell{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;background:#f1f5f9}
+  .foto-cell img{width:100%;height:100%;object-fit:cover;display:block}
+  .foto-cell .x{position:absolute;top:4px;right:4px;width:26px;height:26px;border-radius:50%;border:0;background:rgba(15,23,42,.75);color:#fff;font-weight:700;cursor:pointer;line-height:1}
+  .foto-cell .cloud{width:100%;height:100%;display:grid;place-items:center;font-size:12px;color:var(--muted);text-align:center;padding:4px}
+  .foto-add{aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:1.5px dashed #cbd5e1;border-radius:10px;cursor:pointer;color:var(--muted);font-weight:600;font-size:12px;text-align:center}
+  .foto-add span{font-size:24px}
+  .thumbs{grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap}
+  .thumbs img,.thumbs .tc{width:54px;height:54px;object-fit:cover;border-radius:8px;background:#f1f5f9;display:grid;place-items:center;font-size:18px}
+  .foto-links a{margin-right:6px;white-space:nowrap}
   .info-list{margin:12px 0;padding:0;list-style:none} .info-list li{padding:6px 0 6px 28px;position:relative}
   .info-list li:before{content:"✔";position:absolute;left:4px;color:var(--ok);font-weight:800}
 
@@ -172,7 +180,7 @@
    - Bila file ini di-host di luar (GitHub Pages/Netlify), isi dengan URL Web App
      (https://script.google.com/macros/s/XXXX/exec).
    ===================================================================== */
-const API_URL = 'https://script.google.com/macros/s/AKfycbwHz9ktmIuXfhTEIHZA7zB32eK0avTVw69AWwmsB38T50Zcyf0of-BPtNq6gx2I9Spm/exec';
+const API_URL = '';
 const KONDISI = ['Aman', 'Ada Temuan', 'Butuh Tindakan'];
 const KLS = { 'Aman': 'ok', 'Ada Temuan': 'warn', 'Butuh Tindakan': 'bad' };
 
@@ -238,7 +246,7 @@ function call(action, payload) {
   try {
     S.user = await call('me');
     await muatCP();
-    S.patroli = LS.get(kunciDraft());
+    S.patroli = await Draft.load();
     viewApp();
   } catch (e) { viewLogin(); }
   loading(false);
@@ -246,9 +254,45 @@ function call(action, payload) {
 
 async function muatCP() { S.cps = await call('getCheckpoints'); }
 function kunciDraft() { return 'sp_draft_' + (S.user ? S.user.username : ''); }
-function simpanDraft() {
-  if (S.patroli && !LS.set(kunciDraft(), S.patroli)) toast('Penyimpanan sementara penuh (foto terlalu banyak). Segera kirim laporan.', 'err');
-}
+
+/* Draft patroli disimpan di IndexedDB (kapasitas besar untuk foto), cadangan ke localStorage */
+const Draft = {
+  db: null,
+  open() {
+    if (this.db) return Promise.resolve(this.db);
+    return new Promise((res, rej) => {
+      try {
+        const r = indexedDB.open('security_patrol', 1);
+        r.onupgradeneeded = () => r.result.createObjectStore('draft');
+        r.onsuccess = () => { this.db = r.result; res(this.db); };
+        r.onerror = () => rej(r.error);
+      } catch (e) { rej(e); }
+    });
+  },
+  async tx(mode, fn) {
+    const db = await this.open();
+    return new Promise((res, rej) => {
+      const t = db.transaction('draft', mode), st = t.objectStore('draft'), q = fn(st);
+      t.oncomplete = () => res(q && q.result); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error);
+    });
+  },
+  async load() {
+    let p = null;
+    try { p = await this.tx('readonly', st => st.get(kunciDraft())); } catch (e) {}
+    if (!p) p = LS.get(kunciDraft());
+    if (p && p.items) p.items.forEach(i => { if (!i.fotos) i.fotos = i.foto ? [i.foto] : []; delete i.foto; });
+    return p || null;
+  },
+  async save(p) {
+    try { await this.tx('readwrite', st => st.put(p, kunciDraft())); LS.del(kunciDraft()); return; } catch (e) {}
+    if (!LS.set(kunciDraft(), p)) toast('Penyimpanan sementara penuh (foto terlalu banyak). Segera kirim laporan.', 'err');
+  },
+  async del() {
+    try { await this.tx('readwrite', st => st.delete(kunciDraft())); } catch (e) {}
+    LS.del(kunciDraft());
+  }
+};
+function simpanDraft() { if (S.patroli) return Draft.save(S.patroli); }
 function sesiHabis() { S.token = null; LS.del('sp_token'); viewLogin(); toast('Sesi berakhir, silakan login kembali.', 'err'); }
 
 /* =====================================================================
@@ -280,7 +324,7 @@ async function masuk(e) {
     const r = await call('login', { username: $('#luser').value, password: $('#lpass').value });
     S.token = r.token; S.user = r.user; LS.set('sp_token', r.token);
     await muatCP();
-    S.patroli = LS.get(kunciDraft());
+    S.patroli = await Draft.load();
     S.tab = 'patroli'; viewApp();
     toast('Selamat datang, ' + S.user.nama, 'ok');
   } catch (err) { toast(err.message, 'err'); }
@@ -357,7 +401,7 @@ function viewPatroli() {
       <div><b>${esc(it.checkpoint)}</b><div class="muted small">${jam(it.waktu)} WIB</div></div>
       <span class="badge ${KLS[it.kondisi]}">${esc(it.kondisi)}</span>
       ${it.catatan ? `<div class="cat">📝 ${esc(it.catatan)}</div>` : ''}
-      ${it.foto ? `<img src="${it.foto}" alt="foto">` : ''}
+      ${it.fotos && it.fotos.length ? `<div class="thumbs">${it.fotos.map(f => thumb(f)).join('')}</div>` : ''}
       <div class="act"><button class="btn ghost sm" onclick="formCP(${i})">Ubah</button><button class="btn danger sm" onclick="hapusItem(${i})">Hapus</button></div>
     </div>`).join('');
 
@@ -382,7 +426,7 @@ function mulaiPatroli() { S.patroli = { mulai: new Date().toISOString(), items: 
 
 function batalPatroli() {
   modal(`<h3>Batalkan patroli?</h3><p class="muted">Semua data scan yang belum dikirim akan dihapus dari perangkat ini.</p>
-    <div class="foot"><button class="btn ghost" onclick="tutupModal()">Tidak</button><button class="btn danger" onclick="S.patroli=null;LS.del(kunciDraft());tutupModal();viewPatroli()">Ya, batalkan</button></div>`);
+    <div class="foot"><button class="btn ghost" onclick="tutupModal()">Tidak</button><button class="btn danger" onclick="S.patroli=null;Draft.del();tutupModal();viewPatroli()">Ya, batalkan</button></div>`);
 }
 
 function hapusItem(i) {
@@ -491,7 +535,8 @@ async function hasilScan(teks) {
 /* ---------- Form kondisi checkpoint ---------- */
 function formCP(idx, cpBaru) {
   const ex = idx >= 0 ? S.patroli.items[idx] : null;
-  S.form = ex ? Object.assign({ idx }, ex) : { idx: -1, checkpoint: cpBaru, waktu: new Date().toISOString(), kondisi: 'Aman', catatan: '', foto: '', lat: '', lng: '' };
+  S.form = ex ? Object.assign({ idx }, ex, { fotos: (ex.fotos || []).slice() })
+              : { idx: -1, checkpoint: cpBaru, waktu: new Date().toISOString(), kondisi: 'Aman', catatan: '', fotos: [], lat: '', lng: '' };
   if (!ex && navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(p => { if (S.form) { S.form.lat = p.coords.latitude.toFixed(6); S.form.lng = p.coords.longitude.toFixed(6); } }, () => {}, { enableHighAccuracy: true, timeout: 8000 });
   }
@@ -502,9 +547,9 @@ function formCP(idx, cpBaru) {
     <div class="chips" id="chips">${KONDISI.map(k => `<button type="button" class="chip ${KLS[k]} ${k === S.form.kondisi ? 'on' : ''}" data-k="${k}">${k}</button>`).join('')}</div>
     <label class="lbl" style="margin-top:14px">Catatan <span id="wjb" class="muted small"></span></label>
     <textarea class="inp" id="fcat" rows="3" placeholder="Contoh: Pintu exit terkunci, lampu menyala normal">${esc(S.form.catatan)}</textarea>
-    <label class="lbl" style="margin-top:14px">Foto (opsional)</label>
-    <label class="foto-btn"><input type="file" accept="image/*" capture="environment" id="ffoto" hidden>
-      <span id="fprev">${S.form.foto ? `<img src="${S.form.foto}">` : '📸 Ambil foto dengan kamera'}</span></label>
+    <label class="lbl" style="margin-top:14px">Foto <span class="muted small" id="fcount"></span></label>
+    <input type="file" accept="image/*" capture="environment" id="ffoto" hidden>
+    <div class="foto-grid" id="fgrid"></div>
     <div class="foot"><button class="btn ghost" onclick="tutupModal()">Batal</button><button class="btn primary" onclick="simpanCP()">Simpan</button></div>`);
   const tandaWajib = () => $('#wjb').textContent = S.form.kondisi === 'Aman' ? '(opsional)' : '(wajib diisi)';
   tandaWajib();
@@ -514,19 +559,36 @@ function formCP(idx, cpBaru) {
     document.querySelectorAll('#chips .chip').forEach(x => x.classList.toggle('on', x === b));
     tandaWajib();
   };
+  renderFoto();
   $('#ffoto').onchange = async e => {
-    const f = e.target.files[0]; if (!f) return;
-    $('#fprev').textContent = 'Memproses foto...';
-    try { S.form.foto = await kompres(f); $('#fprev').innerHTML = `<img src="${S.form.foto}">`; }
-    catch (err) { $('#fprev').textContent = 'Foto gagal diproses, coba lagi.'; }
+    const f = e.target.files[0]; e.target.value = '';
+    if (!f || S.form.fotos.length >= MAX_FOTO) return;
+    const add = $('#fadd'); if (add) add.innerHTML = '<span>⏳</span>Memproses...';
+    try { S.form.fotos.push(await kompres(f)); }
+    catch (err) { toast('Foto gagal diproses, coba lagi.', 'err'); }
+    renderFoto();
   };
 }
+
+const MAX_FOTO = 5;
+const isData = f => /^data:image\//.test(f);
+function thumb(f) { return isData(f) ? `<img src="${f}" alt="foto">` : `<span class="tc" title="Sudah terunggah">☁️</span>`; }
+
+function renderFoto() {
+  const fs = S.form.fotos;
+  $('#fcount').textContent = `(${fs.length}/${MAX_FOTO}, opsional)`;
+  $('#fgrid').innerHTML = fs.map((f, i) => `<div class="foto-cell">
+      ${isData(f) ? `<img src="${f}" alt="foto ${i + 1}">` : '<div class="cloud">☁️<br>Sudah terunggah</div>'}
+      <button type="button" class="x" onclick="hapusFoto(${i})" aria-label="Hapus foto">✕</button></div>`).join('')
+    + (fs.length < MAX_FOTO ? `<label class="foto-add" id="fadd" for="ffoto"><span>📸</span>${fs.length ? 'Tambah foto' : 'Ambil foto'}</label>` : '');
+}
+function hapusFoto(i) { S.form.fotos.splice(i, 1); renderFoto(); }
 
 function kompres(file) {
   return new Promise((res, rej) => {
     const img = new Image(), url = URL.createObjectURL(file);
     img.onload = () => {
-      const max = 1024; let w = img.width, h = img.height;
+      const max = 1280; let w = img.width, h = img.height;
       if (w > h && w > max) { h = h * max / w; w = max; } else if (h > max) { w = w * max / h; h = max; }
       const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
       cv.getContext('2d').drawImage(img, 0, 0, w, h);
@@ -539,7 +601,7 @@ function kompres(file) {
 function simpanCP() {
   const f = S.form; f.catatan = $('#fcat').value.trim();
   if (f.kondisi !== 'Aman' && !f.catatan) { toast('Catatan wajib diisi bila ada temuan.', 'err'); $('#fcat').focus(); return; }
-  const item = { checkpoint: f.checkpoint, waktu: f.waktu, kondisi: f.kondisi, catatan: f.catatan, foto: f.foto, lat: f.lat, lng: f.lng };
+  const item = { checkpoint: f.checkpoint, waktu: f.waktu, kondisi: f.kondisi, catatan: f.catatan, fotos: f.fotos.slice(0, MAX_FOTO), lat: f.lat, lng: f.lng };
   if (f.idx >= 0) S.patroli.items[f.idx] = item; else S.patroli.items.push(item);
   simpanDraft(); S.form = null; tutupModal(); viewPatroli();
   toast(item.checkpoint + ' tercatat', 'ok');
@@ -559,10 +621,21 @@ function konfirmKirim() {
 }
 
 async function kirim() {
-  tutupModal(); loading(true, 'Mengirim laporan...');
+  tutupModal();
   try {
+    // 1) Unggah foto satu per satu (yang sudah terunggah dilewati, aman bila dikirim ulang)
+    const antre = [];
+    S.patroli.items.forEach((it, a) => (it.fotos || []).forEach((f, b) => { if (isData(f)) antre.push([a, b]); }));
+    for (let n = 0; n < antre.length; n++) {
+      const [a, b] = antre[n], it = S.patroli.items[a];
+      loading(true, `Mengunggah foto ${n + 1} dari ${antre.length}...`);
+      it.fotos[b] = await call('uploadFoto', { data: it.fotos[b], nama: it.checkpoint + ' (' + (b + 1) + ')' });
+      await simpanDraft();
+    }
+    // 2) Kirim data patroli
+    loading(true, 'Mengirim laporan...');
     const hasil = await call('submitPatroli', { mulai: S.patroli.mulai, items: S.patroli.items });
-    S.patroli = null; LS.del(kunciDraft());
+    S.patroli = null; await Draft.del();
     $('#content').innerHTML = `<div class="success no-print">✅ Laporan berhasil dikirim ke spreadsheet.</div>
       ${kartuLaporan(hasil)}
       <div class="row gap no-print"><button class="btn ghost" style="flex:1" onclick="window.print()">🖨️ Cetak / PDF</button><button class="btn primary" style="flex:1" onclick="viewPatroli()">Selesai</button></div>`;
@@ -594,7 +667,7 @@ function kartuLaporan(g) {
       <tbody>${g.items.map((i, n) => `<tr>
         <td>${n + 1}</td><td>${esc(i.jam)}</td><td>${esc(i.checkpoint)}</td>
         <td><span class="badge ${KLS[i.kondisi] || 'grey'}">${esc(i.kondisi)}</span></td>
-        <td>${esc(i.catatan || '-')}${i.foto ? ` · <a href="${esc(i.foto)}" target="_blank" rel="noopener">Foto</a>` : ''}</td></tr>`).join('')}</tbody>
+        <td>${esc(i.catatan || '-')}${i.fotos && i.fotos.length ? `<div class="foto-links">📷 ${i.fotos.map((u, k) => `<a href="${esc(u)}" target="_blank" rel="noopener">Foto ${k + 1}</a>`).join('')}</div>` : ''}</td></tr>`).join('')}</tbody>
     </table></div>
     ${g.terlewat && g.terlewat.length ? `<details><summary>Checkpoint belum dikunjungi (${g.terlewat.length})</summary><p class="muted">${g.terlewat.map(esc).join(' · ')}</p></details>` : ''}
     <div class="ttd">
