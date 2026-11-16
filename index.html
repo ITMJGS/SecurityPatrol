@@ -363,6 +363,7 @@ function daftarTab() {
   const r = S.user.role, t = [['patroli', '🛡️ Patroli']];
   if (r === 'Admin' || r === 'Supervisor') t.push(['laporan', '📋 Laporan']);
   if (r === 'Admin') t.push(['users', '👥 Pengguna'], ['qr', '🔳 QR Checkpoint']);
+  if (r === 'Admin' || r === 'Supervisor') t.push(['log', '📜 Log']);
   t.push(['akun', '⚙️ Akun']);
   return t;
 }
@@ -382,7 +383,7 @@ function bukaTab(k) {
   if (!daftarTab().some(t => t[0] === k)) k = 'patroli';
   S.tab = k;
   document.querySelectorAll('nav.tabs button').forEach((b, i) => b.classList.toggle('on', daftarTab()[i][0] === k));
-  ({ patroli: viewPatroli, laporan: viewLaporan, users: viewUsers, qr: viewQR, akun: viewAkun })[k]();
+  ({ patroli: viewPatroli, laporan: viewLaporan, users: viewUsers, qr: viewQR, log: viewLog, akun: viewAkun })[k]();
   window.scrollTo(0, 0);
 }
 
@@ -577,13 +578,24 @@ function formCP(idx, cpBaru) {
 
 const MAX_FOTO = 5;
 const isData = f => /^data:image\//.test(f);
-function thumb(f) { return isData(f) ? `<img src="${f}" alt="foto">` : `<span class="tc" title="Sudah terunggah">☁️</span>`; }
+/* Link Drive (…/file/d/ID/view) diubah menjadi link thumbnail yang bisa langsung tampil sebagai gambar */
+function thumbUrl(f) {
+  const m = String(f).match(/\/file\/d\/([^/?#]+)/) || String(f).match(/[?&]id=([^&]+)/);
+  return m ? 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w300' : f;
+}
+/* Thumbnail foto: data gambar langsung; link Drive ditampilkan thumbnail-nya dan bisa dibuka penuh */
+function thumbImg(f, alt) {
+  const src = isData(f) ? f : thumbUrl(f);
+  const img = `<img src="${esc(src)}" alt="${esc(alt || 'foto')}" referrerpolicy="no-referrer" loading="lazy" onerror="this.outerHTML='<span class=tc>📷</span>'">`;
+  return isData(f) ? img : `<a href="${esc(f)}" target="_blank" rel="noopener" style="display:block;height:100%">${img}</a>`;
+}
+function thumb(f) { return thumbImg(f); }
 
 function renderFoto() {
   const fs = S.form.fotos;
   $('#fcount').textContent = `(${fs.length}/${MAX_FOTO}, opsional)`;
   $('#fgrid').innerHTML = fs.map((f, i) => `<div class="foto-cell">
-      ${isData(f) ? `<img src="${f}" alt="foto ${i + 1}">` : '<div class="cloud">☁️<br>Sudah terunggah</div>'}
+      ${thumbImg(f, 'foto ' + (i + 1))}
       <button type="button" class="x" onclick="hapusFoto(${i})" aria-label="Hapus foto">✕</button></div>`).join('')
     + (fs.length < MAX_FOTO ? `<label class="foto-add" id="fadd" for="ffoto"><span>📸</span>${fs.length ? 'Tambah foto' : 'Ambil foto'}</label>` : '');
 }
@@ -802,6 +814,65 @@ function viewQR() {
 /* =====================================================================
    AKUN
    ===================================================================== */
+/* =====================================================================
+   LOG AKTIVITAS (Admin & Supervisor)
+   ===================================================================== */
+const AKSI_LOG = ['Login', 'Login gagal', 'Logout', 'Daftar akun', 'Tambah pengguna', 'Ubah pengguna', 'Hapus pengguna',
+  'Reset password', 'Ganti password', 'Ganti foto profil', 'Kirim patroli'];
+const KLS_LOG = { 'Login gagal': 'bad', 'Hapus pengguna': 'bad', 'Reset password': 'warn', 'Ubah pengguna': 'warn', 'Logout': 'grey' };
+const tglOffset = n => { const d = new Date(); d.setDate(d.getDate() + n);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+
+function viewLog() {
+  S.log = { dari: tglOffset(-6), sampai: hariIni(), username: '', aksi: '', rows: [], total: 0 };
+  $('#content').innerHTML = `<section class="card no-print">
+      <h2>Log Aktivitas</h2>
+      <p class="muted small" style="margin-top:0">Riwayat login, perubahan pengguna, dan kiriman patroli. Secara default menampilkan 7 hari terakhir.</p>
+      <div class="row gap" style="flex-wrap:wrap">
+        <div style="flex:1;min-width:140px"><label class="lbl">Dari</label><input class="inp" type="date" id="ldari" value="${S.log.dari}"></div>
+        <div style="flex:1;min-width:140px"><label class="lbl">Sampai</label><input class="inp" type="date" id="lsampai" value="${S.log.sampai}"></div>
+      </div>
+      <div class="row gap" style="flex-wrap:wrap;margin-top:10px">
+        <div style="flex:1;min-width:140px"><label class="lbl">Pengguna</label><input class="inp" id="lpengguna" placeholder="Username atau nama"></div>
+        <div style="flex:1;min-width:140px"><label class="lbl">Aktivitas</label>
+          <select class="inp" id="laksi"><option value="">Semua aktivitas</option>${AKSI_LOG.map(a => `<option>${a}</option>`).join('')}</select></div>
+      </div>
+      <button class="btn primary full" style="margin-top:14px" onclick="cariLog()">Tampilkan</button>
+    </section>
+    <div id="logBox"></div>`;
+  cariLog();
+}
+
+async function cariLog(muatLagi) {
+  const L = S.log;
+  if (!muatLagi) {
+    L.dari = $('#ldari').value; L.sampai = $('#lsampai').value;
+    L.username = $('#lpengguna').value.trim(); L.aksi = $('#laksi').value;
+    L.rows = []; L.total = 0;
+  }
+  const box = $('#logBox');
+  if (!muatLagi) box.innerHTML = '<div class="loader"><div class="spin"></div></div>';
+  try {
+    const r = await call('getLog', { dari: L.dari, sampai: L.sampai, username: L.username, aksi: L.aksi, offset: L.rows.length, limit: 50 });
+    L.total = r.total; L.rows = L.rows.concat(r.rows);
+    if (!L.total) { box.innerHTML = '<div class="empty">Tidak ada aktivitas pada filter ini.</div>'; return; }
+    box.innerHTML = `<div class="muted small" style="margin:14px 2px 8px">${L.total} aktivitas ditemukan · menampilkan ${L.rows.length}</div>`
+      + L.rows.map(kartuLog).join('')
+      + (L.rows.length < L.total ? `<button class="btn ghost full" style="margin-top:6px" onclick="cariLog(true)">Muat lagi</button>` : '');
+  } catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+
+function kartuLog(r) {
+  const k = KLS_LOG[r.aksi] || 'ok';
+  const itemKls = k === 'bad' ? 'bad' : k === 'warn' ? 'warn' : '';
+  return `<div class="item ${itemKls}" style="grid-template-columns:1fr auto">
+    <div><b>${esc(r.nama)}</b> <span class="muted small">@${esc(r.username)} · ${esc(r.role)}</span></div>
+    <span class="badge ${k === 'ok' ? 'navy' : k}">${esc(r.aksi)}</span>
+    ${r.detail ? `<div class="cat">${esc(r.detail)}</div>` : ''}
+    <div class="muted small" style="grid-column:1/-1">${esc(r.waktu)} WIB</div>
+  </div>`;
+}
+
 /* Avatar: foto profil bila ada, jika tidak inisial nama */
 function avatarHtml(nama, foto, ukuran) {
   return `<div class="avatar ${ukuran || ''}">${foto ? `<img src="${esc(foto)}" alt="" referrerpolicy="no-referrer">` : esc(inisial(nama))}</div>`;
