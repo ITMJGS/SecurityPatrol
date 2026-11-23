@@ -104,6 +104,8 @@
   .foto-links a{display:inline-block;margin:2px 6px 2px 0;padding:2px 9px;border-radius:99px;background:#e0e7f1;white-space:nowrap;text-decoration:none}
   tr.foto-row td{border-top:0;padding-top:0;background:#fff}
   tr.foto-row td{font-size:12px}
+  .print-only{display:none}
+  @media print{ .print-only{display:block} }
   .info-list{margin:12px 0;padding:0;list-style:none} .info-list li{padding:6px 0 6px 28px;position:relative}
   .info-list li:before{content:"✔";position:absolute;left:4px;color:var(--ok);font-weight:800}
 
@@ -751,10 +753,11 @@ async function viewUsers() {
         ? `<div class="row gap"><button class="btn primary sm" onclick="setujui('${esc(u.username)}')">Setujui</button><button class="btn ghost sm" onclick="kelolaUser('${esc(u.username)}')">⋯</button></div>`
         : `<button class="btn ghost sm" onclick="kelolaUser('${esc(u.username)}')">Kelola</button>`}
     </div>`;
-  c.innerHTML = `<section class="card row between"><div><h2>Pengguna</h2><span class="muted small">${S.users.length} akun terdaftar</span></div>
-      <button class="btn primary sm" onclick="tambahUser()">+ Tambah</button></section>
-    ${pend.length ? `<h3 class="sec">Menunggu persetujuan (${pend.length})</h3>${pend.map(kartu).join('')}` : ''}
-    <h3 class="sec">Semua pengguna</h3>${lain.map(kartu).join('') || '<div class="empty">Belum ada pengguna.</div>'}`;
+  c.innerHTML = `<section class="card row between no-print"><div><h2>Pengguna</h2><span class="muted small">${S.users.length} akun terdaftar</span></div>
+      <div class="row gap"><button class="btn ghost sm" onclick="window.print()">🖨️ Cetak</button><button class="btn primary sm" onclick="tambahUser()">+ Tambah</button></div></section>
+    <div class="no-print">${pend.length ? `<h3 class="sec">Menunggu persetujuan (${pend.length})</h3>${pend.map(kartu).join('')}` : ''}</div>
+    <div class="no-print"><h3 class="sec">Semua pengguna</h3>${lain.map(kartu).join('') || '<div class="empty">Belum ada pengguna.</div>'}</div>
+    ${tabelPenggunaCetak()}`;
 }
 
 async function aksiUser(action, payload, pesanOk) {
@@ -814,6 +817,20 @@ function viewQR() {
 /* =====================================================================
    AKUN
    ===================================================================== */
+/* Tabel daftar pengguna untuk dicetak (hanya tampil saat print) */
+function tabelPenggunaCetak() {
+  const tgl = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+  const baris = S.users.map((u, i) => `<tr><td>${i + 1}</td><td>${esc(u.nama)}</td><td>${esc(u.username)}</td>
+      <td>${esc(u.role)}</td><td>${esc(u.status)}</td><td>${esc(u.dibuat)}</td><td>${esc(u.loginTerakhir || '-')}</td></tr>`).join('');
+  return `<section class="print-only">
+    <div class="lap-head"><div class="lg">🛡️</div><div><h3>DAFTAR PENGGUNA SECURITY PATROL</h3>
+      <div class="muted small">Dicetak ${tgl} · ${S.users.length} akun</div></div></div>
+    <div class="tbl-wrap" style="margin-top:14px"><table>
+      <thead><tr><th>No</th><th>Nama</th><th>Username</th><th>Role</th><th>Status</th><th>Dibuat</th><th>Login terakhir</th></tr></thead>
+      <tbody>${baris}</tbody></table></div>
+  </section>`;
+}
+
 /* =====================================================================
    LOG AKTIVITAS (Admin & Supervisor)
    ===================================================================== */
