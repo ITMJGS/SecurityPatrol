@@ -113,7 +113,8 @@
   <section id="patroliView" class="hidden">
     <div class="card">
       <h2>Patroli Anda</h2>
-      <div class="small">Nama petugas, tanggal, dan jam mulai patroli dicatat otomatis.</div>
+      <div class="small">Petugas: <b id="patroliUser"></b></div>
+      <div class="small">Mulai patroli: <b id="patroliMulai">Belum dimulai</b></div>
     </div>
 
     <div class="card">
@@ -209,7 +210,7 @@
 
 <script>
 /* ============ KONFIGURASI ============ */
-const API_URL = 'https://script.google.com/macros/s/AKfycbxCCtFRH-57x1opHqZeVbd71p1wnkW1hHMLwJkx0PLXYwGuruhu9_6pf0uFGT3TGRF3/exec'; // contoh: https://script.google.com/macros/s/xxxx/exec
+const API_URL = 'PASTE_URL_APPS_SCRIPT_DI_SINI'; // contoh: https://script.google.com/macros/s/xxxx/exec
 
 /* ============ STATE ============ */
 let session = null;          // { username, pin, role }
@@ -287,6 +288,8 @@ function enterApp() {
   show($('registerView'), false);
   show($('logoutBtn'), true);
   $('whoLabel').textContent = session.username + ' · ' + session.role;
+  $('patroliUser').textContent = session.username;
+  renderMulai();
   renderTabs();
   const tabs = allowedTabs();
   show($('noAccessView'), tabs.length === 0);
@@ -339,6 +342,7 @@ async function onQrScanned(text) {
     if (!r.ok) return showMsg($('scanMsg'), r.error, false);
     pendingKode = kode;
     if (!mulaiPatroli) mulaiPatroli = new Date().toISOString();
+    renderMulai();
     $('formKode').textContent = kode;
     $('fLokasi').value = r.lokasi;
     setKondisi('Aman'); $('fCatatan').value = ''; resetFotos();
@@ -412,6 +416,11 @@ function saveItem() {
   renderItems();
 }
 function removeItem(i) { items.splice(i, 1); renderItems(); }
+function renderMulai() {
+  $('patroliMulai').textContent = mulaiPatroli
+    ? new Date(mulaiPatroli).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })
+    : 'Belum dimulai';
+}
 function renderItems() {
   $('jumlahItem').textContent = items.length;
   $('kirimBtn').disabled = items.length === 0;
@@ -434,7 +443,7 @@ async function kirimLaporan() {
     const r = await api('submitPatroli', { items, mulaiPatroli });
     if (!r.ok) throw new Error(r.error);
     showMsg($('kirimMsg'), 'Laporan terkirim (' + r.jumlah + ' titik). Terima kasih.', true);
-    items = []; mulaiPatroli = null; renderItems();
+    items = []; mulaiPatroli = null; renderItems(); renderMulai();
   } catch (e) {
     showMsg($('kirimMsg'), 'Gagal mengirim: ' + e.message + '. Data Anda masih tersimpan, coba kirim lagi.', false);
     $('kirimBtn').disabled = false;
