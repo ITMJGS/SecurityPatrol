@@ -370,14 +370,49 @@ async function addFotos(input) {
   const sisa = 3 - pendingFotos.length;
   const files = [...input.files];
   if (files.length > sisa) alert('Maksimal 3 foto per titik. Sisa slot: ' + Math.max(sisa, 0) + '.');
-  for (const f of files.slice(0, Math.max(sisa, 0))) {
-    try { pendingFotos.push(await compressImage(f)); }
-    catch (e) { alert('Foto tidak bisa dibaca: ' + f.name); }
+  input.value = '';
+  if (files.length && sisa > 0) {
+    const geo = await getGeo();                 // koordinat saat foto diambil
+    const waktu = new Date();
+    for (const f of files.slice(0, sisa)) {
+      try { pendingFotos.push(await compressImage(f, { username: session.username, waktu, geo })); }
+      catch (e) { alert('Foto tidak bisa dibaca: ' + f.name); }
+    }
   }
   input.value = '';
   renderFotos();
 }
-function compressImage(file) {
+function getGeo() {
+  return new Promise(resolve => {
+    if (!navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      p => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+    );
+  });
+}
+// Tulis watermark (petugas, waktu foto, koordinat) di bagian bawah foto
+function drawWatermark(canvas, info) {
+  const ctx = canvas.getContext('2d');
+  const waktuTxt = info.waktu.toLocaleString('id-ID', {
+    timeZone: 'Asia/Jakarta', day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit'
+  });
+  const koordTxt = info.geo ? info.geo.lat.toFixed(6) + ', ' + info.geo.lng.toFixed(6) : 'tidak tersedia';
+  const lines = ['Petugas: ' + info.username, 'Waktu: ' + waktuTxt + ' WIB', 'Koordinat: ' + koordTxt];
+  const pad = Math.round(canvas.width * 0.03);
+  const fs = Math.max(14, Math.round(canvas.width * 0.035));
+  const lh = Math.round(fs * 1.35);
+  const boxH = lh * lines.length + pad * 2;
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(0, canvas.height - boxH, canvas.width, boxH);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold ' + fs + 'px sans-serif';
+  ctx.textBaseline = 'top';
+  lines.forEach((t, i) => ctx.fillText(t, pad, canvas.height - boxH + pad + i * lh));
+}
+function compressImage(file, info) {
   // Kecilkan foto di browser (maks. 1024 px, JPEG 70%) agar ringan dikirim dan hemat Drive
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
@@ -388,6 +423,7 @@ function compressImage(file) {
       canvas.width = Math.round(img.width * s);
       canvas.height = Math.round(img.height * s);
       canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      if (info) drawWatermark(canvas, info);
       URL.revokeObjectURL(url);
       resolve(canvas.toDataURL('image/jpeg', 0.7));
     };
