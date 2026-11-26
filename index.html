@@ -104,7 +104,7 @@
   <section id="patroliView" class="hidden">
     <div class="card">
       <h2>Patroli Anda</h2>
-      <div class="small">Nama patroli dibuat otomatis dari akun Anda (<b id="patroliUser"></b>) dan waktu saat laporan dikirim. Setiap titik QR yang di-scan akan masuk ke daftar di bawah.</div>
+      <div class="small">Nama petugas, tanggal, dan jam mulai patroli dicatat otomatis.</div>
     </div>
 
     <div class="card">
@@ -201,6 +201,7 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbxCCtFRH-57x1opHqZeVbd7
 /* ============ STATE ============ */
 let session = null;          // { username, pin, role }
 let items = [];              // titik yang sudah diisi
+let mulaiPatroli = null;     // waktu scan pertama (ISO), jadi jam mulai patroli
 let pendingKode = null;      // kode QR yang sedang diisi
 let qr = null;
 let scanning = false;
@@ -261,7 +262,7 @@ async function api_raw(action, body) {
 }
 function logout() {
   stopScan();
-  session = null; items = []; sessionStorage.removeItem(SESSION_KEY);
+  session = null; items = []; mulaiPatroli = null; sessionStorage.removeItem(SESSION_KEY);
   show($('loginView'), true); show($('patroliView'), false); show($('adminView'), false); show($('adminTabs'), false); show($('noAccessView'), false);
   show($('logoutBtn'), false); $('whoLabel').textContent = '';
 }
@@ -270,7 +271,6 @@ function enterApp() {
   show($('registerView'), false);
   show($('logoutBtn'), true);
   $('whoLabel').textContent = session.username + ' · ' + session.role;
-  $('patroliUser').textContent = session.username;
   renderTabs();
   const tabs = allowedTabs();
   show($('noAccessView'), tabs.length === 0);
@@ -320,6 +320,7 @@ async function onQrScanned(text) {
     const r = await api('getTitik', { kode });
     if (!r.ok) return showMsg($('scanMsg'), r.error, false);
     pendingKode = kode;
+    if (!mulaiPatroli) mulaiPatroli = new Date().toISOString();
     $('formKode').textContent = kode;
     $('fLokasi').value = r.lokasi;
     $('fKondisi').value = 'Aman'; $('fCatatan').value = '';
@@ -361,10 +362,10 @@ async function kirimLaporan() {
   if (!confirm('Kirim laporan dengan ' + items.length + ' titik?')) return;
   $('kirimBtn').disabled = true;
   try {
-    const r = await api('submitPatroli', { items });
+    const r = await api('submitPatroli', { items, mulaiPatroli });
     if (!r.ok) throw new Error(r.error);
     showMsg($('kirimMsg'), 'Laporan terkirim (' + r.jumlah + ' titik). Terima kasih.', true);
-    items = []; renderItems();
+    items = []; mulaiPatroli = null; renderItems();
   } catch (e) {
     showMsg($('kirimMsg'), 'Gagal mengirim: ' + e.message + '. Data Anda masih tersimpan, coba kirim lagi.', false);
     $('kirimBtn').disabled = false;
