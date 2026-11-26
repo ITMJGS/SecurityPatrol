@@ -72,8 +72,30 @@
     <input id="loginPin" type="password" inputmode="numeric" autocomplete="current-password" />
     <div style="margin-top:14px"><button onclick="doLogin()">Masuk</button></div>
     <div id="loginMsg" class="msg err hidden"></div>
-    <p class="small">Akun dibuat dan diaktifkan oleh admin.</p>
+    <p class="small">Belum punya akun? Daftar lalu tunggu persetujuan admin.</p>
+    <button class="secondary" style="margin-top:8px" onclick="showRegister(true)">Daftar Akun Baru</button>
   </section>
+
+  <!-- DAFTAR (petugas) -->
+  <section id="registerView" class="card hidden">
+    <h2>Daftar Akun Petugas</h2>
+    <label>Username</label>
+    <input id="regUser" autocomplete="username" />
+    <label>PIN (4–8 digit angka)</label>
+    <input id="regPin" type="password" inputmode="numeric" autocomplete="new-password" />
+    <div style="margin-top:14px"><button onclick="doRegister()">Daftar</button></div>
+    <div id="regMsg" class="msg hidden"></div>
+    <p class="small">Akun baru belum bisa login sampai disetujui admin.</p>
+    <button class="secondary" style="margin-top:8px" onclick="showRegister(false)">Kembali ke Login</button>
+  </section>
+
+  <!-- Navigasi admin -->
+  <div id="adminTabs" class="tabs hidden">
+    <button id="tabPatroli" onclick="switchTab('patroli')">Patroli</button>
+    <button id="tabUsers" class="active" onclick="switchTab('users')">Kelola User</button>
+    <button id="tabTitik" onclick="switchTab('titik')">Titik & QR</button>
+    <button id="tabLaporan" onclick="switchTab('laporan')">Laporan</button>
+  </div>
 
   <!-- PATROLI (role petugas / admin) -->
   <section id="patroliView" class="hidden">
@@ -129,11 +151,6 @@
 
   <!-- ADMIN -->
   <section id="adminView" class="hidden">
-    <div class="tabs">
-      <button id="tabUsers" class="active" onclick="switchTab('users')">Kelola User</button>
-      <button id="tabTitik" onclick="switchTab('titik')">Titik & QR</button>
-      <button id="tabLaporan" onclick="switchTab('laporan')">Laporan</button>
-    </div>
 
     <div id="tabUsersView" class="card">
       <h2>Tambah User</h2>
@@ -217,6 +234,24 @@ async function doLogin() {
     showMsg($('loginMsg'), 'Gagal terhubung ke server', false);
   }
 }
+function showRegister(on) {
+  show($('loginView'), !on);
+  show($('registerView'), on);
+  show($('loginMsg'), false);
+  if (on) $('regMsg').classList.add('hidden');
+}
+async function doRegister() {
+  const newUsername = $('regUser').value.trim();
+  const newPin = $('regPin').value.trim();
+  try {
+    const r = await api_raw('register', { newUsername, newPin });
+    if (!r.ok) return showMsg($('regMsg'), r.error, false);
+    $('regUser').value = ''; $('regPin').value = '';
+    showMsg($('regMsg'), 'Pendaftaran berhasil. Tunggu persetujuan admin sebelum bisa login.', true);
+  } catch (e) {
+    showMsg($('regMsg'), 'Gagal terhubung ke server', false);
+  }
+}
 async function api_raw(action, body) {
   const res = await fetch(API_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action, ...body }) });
   return res.json();
@@ -224,7 +259,7 @@ async function api_raw(action, body) {
 function logout() {
   stopScan();
   session = null; items = []; sessionStorage.removeItem(SESSION_KEY);
-  show($('loginView'), true); show($('patroliView'), false); show($('adminView'), false);
+  show($('loginView'), true); show($('patroliView'), false); show($('adminView'), false); show($('adminTabs'), false);
   show($('logoutBtn'), false); $('whoLabel').textContent = '';
 }
 function enterApp() {
@@ -232,10 +267,11 @@ function enterApp() {
   show($('logoutBtn'), true);
   $('whoLabel').textContent = session.username + ' · ' + session.role;
   if (session.role === 'admin') {
-    show($('adminView'), true); show($('patroliView'), false);
+    show($('adminTabs'), true);
     switchTab('users');
   } else {
-    show($('patroliView'), true); show($('adminView'), false);
+    show($('adminTabs'), false); show($('adminView'), false);
+    show($('patroliView'), true);
   }
 }
 
@@ -337,10 +373,13 @@ async function kirimLaporan() {
 /* ============ ADMIN ============ */
 function switchTab(t) {
   const tabs = {
+    patroli: ['tabPatroli', 'patroliView'],
     users:   ['tabUsers',   'tabUsersView'],
     titik:   ['tabTitik',   'tabTitikView'],
     laporan: ['tabLaporan', 'tabLaporanView']
   };
+  if (t !== 'patroli') stopScan();           // matikan kamera saat pindah tab
+  show($('adminView'), t !== 'patroli');
   Object.entries(tabs).forEach(([key, [btn, view]]) => {
     $(btn).classList.toggle('active', key === t);
     show($(view), key === t);
@@ -419,7 +458,7 @@ async function loadUsers() {
     <div class="item"><div class="top"><span>${esc(u.username)} <span class="small">(${esc(u.role)})</span></span>
     <button class="${u.aktif ? 'danger' : ''}" style="width:auto;padding:6px 10px;font-size:12px"
       onclick="setAktif('${esc(u.username)}', ${!u.aktif})">${u.aktif ? 'Cabut Akses' : 'Beri Akses'}</button></div>
-    <div class="small">${u.aktif ? 'Aktif' : 'Nonaktif'}</div></div>`).join('') || '<p class="small">Belum ada user.</p>';
+    <div class="small">${u.aktif ? 'Aktif' : 'Belum aktif (menunggu persetujuan atau nonaktif)'}</div></div>`).join('') || '<p class="small">Belum ada user.</p>';
 }
 async function addUser() {
   const r = await api('addUser', { newUsername: $('nUser').value, newPin: $('nPin').value, newRole: $('nRole').value });
