@@ -45,6 +45,9 @@
   .titik-body { display:flex; gap:12px; align-items:center; margin-top:10px; }
   .titik-body .acts { flex:1; display:flex; flex-direction:column; gap:6px; }
   .titik-body button { font-size:12px; padding:7px 10px; }
+  .hak-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:8px; }
+  .hak-grid label { margin:0; display:flex; align-items:center; gap:6px; color:#0f172a; font-size:13px; }
+  .hak-grid input { width:auto; }
 </style>
 </head>
 <body>
@@ -89,15 +92,15 @@
     <button class="secondary" style="margin-top:8px" onclick="showRegister(false)">Kembali ke Login</button>
   </section>
 
-  <!-- Navigasi admin -->
-  <div id="adminTabs" class="tabs hidden">
-    <button id="tabPatroli" onclick="switchTab('patroli')">Patroli</button>
-    <button id="tabUsers" class="active" onclick="switchTab('users')">Kelola User</button>
-    <button id="tabTitik" onclick="switchTab('titik')">Titik & QR</button>
-    <button id="tabLaporan" onclick="switchTab('laporan')">Laporan</button>
+  <!-- Navigasi (tab sesuai hak akses user, dirender otomatis) -->
+  <nav id="adminTabs" class="tabs hidden"></nav>
+
+  <div id="noAccessView" class="card hidden">
+    <h2>Belum ada akses</h2>
+    <p class="small">Akun Anda belum punya hak akses ke fitur mana pun. Hubungi admin.</p>
   </div>
 
-  <!-- PATROLI (role petugas / admin) -->
+  <!-- PATROLI (semua user yang punya hak patroli) -->
   <section id="patroliView" class="hidden">
     <div class="card">
       <h2>Mulai Patroli</h2>
@@ -160,6 +163,8 @@
       </div>
       <label>Role</label>
       <select id="nRole"><option value="petugas">Petugas</option><option value="admin">Admin</option></select>
+      <label>Hak akses (untuk petugas)</label>
+      <div class="hak-grid" id="nHakGrid"></div>
       <div style="margin-top:12px"><button onclick="addUser()">Tambah & Beri Akses</button></div>
       <div id="userMsg" class="msg hidden"></div>
       <h2 style="margin-top:18px">Daftar User</h2>
@@ -227,7 +232,7 @@ async function doLogin() {
   try {
     const r = await api_raw('login', { username, pin });
     if (!r.ok) return showMsg($('loginMsg'), r.error, false);
-    session = { username: r.username, role: r.role, pin };
+    session = { username: r.username, role: r.role, hak: r.hak || [], pin };
     sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
     enterApp();
   } catch (e) {
@@ -259,20 +264,18 @@ async function api_raw(action, body) {
 function logout() {
   stopScan();
   session = null; items = []; sessionStorage.removeItem(SESSION_KEY);
-  show($('loginView'), true); show($('patroliView'), false); show($('adminView'), false); show($('adminTabs'), false);
+  show($('loginView'), true); show($('patroliView'), false); show($('adminView'), false); show($('adminTabs'), false); show($('noAccessView'), false);
   show($('logoutBtn'), false); $('whoLabel').textContent = '';
 }
 function enterApp() {
   show($('loginView'), false);
+  show($('registerView'), false);
   show($('logoutBtn'), true);
   $('whoLabel').textContent = session.username + ' · ' + session.role;
-  if (session.role === 'admin') {
-    show($('adminTabs'), true);
-    switchTab('users');
-  } else {
-    show($('adminTabs'), false); show($('adminView'), false);
-    show($('patroliView'), true);
-  }
+  renderTabs();
+  const tabs = allowedTabs();
+  show($('noAccessView'), tabs.length === 0);
+  if (tabs.length) switchTab(tabs[0].key);
 }
 
 /* ============ SCAN QR (kamera belakang) ============ */
@@ -371,18 +374,38 @@ async function kirimLaporan() {
 }
 
 /* ============ ADMIN ============ */
+// Definisi tab: setiap tab hanya tampil jika user punya hak yang sesuai
+const TAB_DEFS = [
+  { key: 'patroli', label: 'Patroli',      hak: 'patroli', view: 'patroliView' },
+  { key: 'users',   label: 'Kelola User',  hak: 'users',   view: 'tabUsersView' },
+  { key: 'titik',   label: 'Titik & QR',   hak: 'titik',   view: 'tabTitikView' },
+  { key: 'laporan', label: 'Laporan',      hak: 'laporan', view: 'tabLaporanView' }
+];
+const HAK_LIST = [
+  ['patroli', 'Scan Patroli'],
+  ['titik',   'Titik & QR'],
+  ['laporan', 'Laporan'],
+  ['users',   'Kelola User']
+];
+const hasHak = key => !!session && Array.isArray(session.hak) && session.hak.indexOf(key) !== -1;
+const allowedTabs = () => TAB_DEFS.filter(d => hasHak(d.hak));
+
+function renderTabs() {
+  const tabs = allowedTabs();
+  $('adminTabs').innerHTML = tabs.map(d => `<button id="tab_${d.key}" onclick="switchTab('${d.key}')">${d.label}</button>`).join('');
+  show($('adminTabs'), tabs.length > 0);
+}
+
 function switchTab(t) {
-  const tabs = {
-    patroli: ['tabPatroli', 'patroliView'],
-    users:   ['tabUsers',   'tabUsersView'],
-    titik:   ['tabTitik',   'tabTitikView'],
-    laporan: ['tabLaporan', 'tabLaporanView']
-  };
+  const def = TAB_DEFS.find(d => d.key === t);
+  if (!def || !hasHak(def.hak)) return;      // cegah tab yang tidak punya hak
   if (t !== 'patroli') stopScan();           // matikan kamera saat pindah tab
+  show($('patroliView'), t === 'patroli');
   show($('adminView'), t !== 'patroli');
-  Object.entries(tabs).forEach(([key, [btn, view]]) => {
-    $(btn).classList.toggle('active', key === t);
-    show($(view), key === t);
+  TAB_DEFS.forEach(d => {
+    const btn = $('tab_' + d.key);
+    if (btn) btn.classList.toggle('active', d.key === t);
+    if (d.key !== 'patroli') show($(d.view), d.key === t);
   });
   if (t === 'users') loadUsers();
   if (t === 'titik') loadTitik();
@@ -451,25 +474,49 @@ function cetakQr() {
   w.document.close();
   setTimeout(() => w.print(), 800);
 }
+let usersCache = [];
+function hakCheckboxesHtml(selected) {
+  return HAK_LIST.map(([k, label]) =>
+    `<label><input type="checkbox" value="${k}" ${selected.includes(k) ? 'checked' : ''}/> ${label}</label>`
+  ).join('');
+}
+function checkedHak(containerId) {
+  return [...document.querySelectorAll('#' + containerId + ' input:checked')].map(c => c.value);
+}
 async function loadUsers() {
   const r = await api('listUsers');
   if (!r.ok) return $('userList').innerHTML = `<div class="msg err">${esc(r.error)}</div>`;
-  $('userList').innerHTML = r.users.map(u => `
+  usersCache = r.users;
+  $('userList').innerHTML = usersCache.map((u, i) => `
     <div class="item"><div class="top"><span>${esc(u.username)} <span class="small">(${esc(u.role)})</span></span>
     <button class="${u.aktif ? 'danger' : ''}" style="width:auto;padding:6px 10px;font-size:12px"
-      onclick="setAktif('${esc(u.username)}', ${!u.aktif})">${u.aktif ? 'Cabut Akses' : 'Beri Akses'}</button></div>
-    <div class="small">${u.aktif ? 'Aktif' : 'Belum aktif (menunggu persetujuan atau nonaktif)'}</div></div>`).join('') || '<p class="small">Belum ada user.</p>';
+      onclick="setAktif(${i}, ${!u.aktif})">${u.aktif ? 'Cabut Akses' : 'Beri Akses'}</button></div>
+    <div class="small">${u.aktif ? 'Aktif' : 'Belum aktif (menunggu persetujuan atau nonaktif)'}</div>
+    ${u.role === 'admin'
+      ? '<div class="small" style="margin-top:6px">Admin memiliki semua hak akses.</div>'
+      : `<div class="small" style="margin-top:8px">Hak akses:</div>
+         <div class="hak-grid" id="hak-${i}">${hakCheckboxesHtml(u.hak)}</div>
+         <button class="secondary" style="margin-top:8px;font-size:12px;padding:7px 10px;width:auto" onclick="saveHak(${i})">Simpan Hak</button>`}
+    </div>`).join('') || '<p class="small">Belum ada user.</p>';
 }
 async function addUser() {
-  const r = await api('addUser', { newUsername: $('nUser').value, newPin: $('nPin').value, newRole: $('nRole').value });
+  const hak = checkedHak('nHakGrid');
+  const r = await api('addUser', { newUsername: $('nUser').value, newPin: $('nPin').value, newRole: $('nRole').value, newHak: hak });
   if (!r.ok) return showMsg($('userMsg'), r.error, false);
   showMsg($('userMsg'), 'User ditambahkan dan diberi akses.', true);
   $('nUser').value = ''; $('nPin').value = '';
   loadUsers();
 }
-async function setAktif(username, aktif) {
-  const r = await api('setAktif', { targetUsername: username, aktif });
-  if (!r.ok) alert(r.error); loadUsers();
+async function setAktif(i, aktif) {
+  const r = await api('setAktif', { targetUsername: usersCache[i].username, aktif });
+  if (!r.ok) alert(r.error);
+  loadUsers();
+}
+async function saveHak(i) {
+  const r = await api('setHak', { targetUsername: usersCache[i].username, hak: checkedHak('hak-' + i) });
+  if (!r.ok) alert(r.error);
+  else alert('Hak akses ' + usersCache[i].username + ' disimpan.');
+  loadUsers();
 }
 async function loadLaporan() {
   const r = await api('listLaporan');
@@ -486,8 +533,14 @@ async function loadLaporan() {
 /* ============ INIT ============ */
 (function init() {
   if (API_URL.startsWith('PASTE_')) show($('configNotice'), true);
+  $('nHakGrid').innerHTML = hakCheckboxesHtml(['patroli']);
   const saved = sessionStorage.getItem(SESSION_KEY);
-  if (saved) { session = JSON.parse(saved); enterApp(); }
+  if (saved) {
+    session = JSON.parse(saved);
+    // Sesi lama (sebelum ada hak akses) dipaksa login ulang agar hak ikut termuat
+    if (!Array.isArray(session.hak)) { session = null; sessionStorage.removeItem(SESSION_KEY); }
+    else enterApp();
+  }
 })();
 </script>
 </body>
