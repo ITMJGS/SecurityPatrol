@@ -45,6 +45,15 @@
   .titik-body { display:flex; gap:12px; align-items:center; margin-top:10px; }
   .titik-body .acts { flex:1; display:flex; flex-direction:column; gap:6px; }
   .titik-body button { font-size:12px; padding:7px 10px; }
+  .titik-grid { display:grid; grid-template-columns:repeat(2, 1fr); gap:10px; }
+  @media (min-width:768px) {
+    .titik-grid { grid-template-columns:repeat(4, 1fr); }
+    main { max-width:960px; }
+  }
+  .titik-card { border:1px solid #e2e8f0; border-radius:10px; padding:10px; display:flex; flex-direction:column; gap:6px; background:#fff; min-width:0; }
+  .titik-card .titik-nama { font-weight:600; font-size:14px; line-height:1.3; overflow-wrap:anywhere; }
+  .titik-card .qr-thumb { width:100%; height:auto; aspect-ratio:1 / 1; }
+  .titik-card button { font-size:12px; padding:7px 6px; }
   .hak-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:8px; }
   .hak-grid label { margin:0; display:flex; align-items:center; gap:6px; color:#0f172a; font-size:13px; }
   .hak-grid input { width:auto; }
@@ -537,19 +546,15 @@ async function loadTitik() {
 }
 function renderTitik() {
   if (!titikCache.length) { $('titikList').innerHTML = '<p class="small">Belum ada titik. Tambahkan titik di atas.</p>'; return; }
-  $('titikList').innerHTML = titikCache.map(t => `
-    <div class="item">
-      <div class="top"><span>${esc(t.lokasi)}</span>
-        <span class="badge ${t.aktif ? 'b-aman' : 'b-off'}">${t.aktif ? 'Aktif' : 'Nonaktif'}</span></div>
-      <div class="small">Kode: ${esc(t.kode)}</div>
-      <div class="titik-body">
-        <img class="qr-thumb" src="${qrUrl(t.kode)}" alt="QR ${esc(t.kode)}" loading="lazy" />
-        <div class="acts">
-          <button class="secondary" onclick="editLokasi('${esc(t.kode)}')">Ubah Lokasi</button>
-          <button class="${t.aktif ? 'danger' : ''}" onclick="toggleTitik('${esc(t.kode)}', ${!t.aktif})">${t.aktif ? 'Nonaktifkan' : 'Aktifkan'}</button>
-        </div>
-      </div>
-    </div>`).join('');
+  $('titikList').innerHTML = `<div class="titik-grid">${titikCache.map(t => `
+    <div class="titik-card">
+      <span class="titik-nama">${esc(t.lokasi)}</span>
+      <span class="badge ${t.aktif ? 'b-aman' : 'b-off'}" style="align-self:flex-start">${t.aktif ? 'Aktif' : 'Nonaktif'}</span>
+      <div class="small">${esc(t.kode)}</div>
+      <img class="qr-thumb" src="${qrUrl(t.kode)}" alt="QR ${esc(t.kode)}" loading="lazy" />
+      <button class="secondary" onclick="editLokasi('${esc(t.kode)}')">Ubah Lokasi</button>
+      <button class="${t.aktif ? 'danger' : ''}" onclick="toggleTitik('${esc(t.kode)}', ${!t.aktif})">${t.aktif ? 'Nonaktifkan' : 'Aktifkan'}</button>
+    </div>`).join('')}</div>`;
 }
 async function addTitik() {
   const lokasi = $('tLokasi').value.trim();
