@@ -40,6 +40,11 @@
   .tabs button { background:#e2e8f0; color:#0f172a; }
   .tabs button.active { background:var(--navy); color:#fff; }
   .small { font-size:12px; color:var(--muted); }
+  .b-off { background:#64748b; }
+  .qr-thumb { width:110px; height:110px; border:1px solid #e2e8f0; border-radius:8px; flex-shrink:0; }
+  .titik-body { display:flex; gap:12px; align-items:center; margin-top:10px; }
+  .titik-body .acts { flex:1; display:flex; flex-direction:column; gap:6px; }
+  .titik-body button { font-size:12px; padding:7px 10px; }
 </style>
 </head>
 <body>
@@ -92,8 +97,8 @@
     <!-- Form isian titik yang baru di-scan -->
     <div class="card hidden" id="formCard">
       <h2>Isi Detail Titik: <span id="formKode"></span></h2>
-      <label>Lokasi</label>
-      <input id="fLokasi" placeholder="mis. Pintu Belakang Lt.1" />
+      <label>Lokasi (dari data titik)</label>
+      <input id="fLokasi" readonly />
       <label>Kondisi</label>
       <select id="fKondisi">
         <option value="Aman">Aman</option>
@@ -125,8 +130,8 @@
   <!-- ADMIN -->
   <section id="adminView" class="hidden">
     <div class="tabs">
-      <button id="tabPatroli" onclick="switchTab('patroli')">Patroli</button>
       <button id="tabUsers" class="active" onclick="switchTab('users')">Kelola User</button>
+      <button id="tabTitik" onclick="switchTab('titik')">Titik & QR</button>
       <button id="tabLaporan" onclick="switchTab('laporan')">Laporan</button>
     </div>
 
@@ -144,6 +149,20 @@
       <div id="userList"></div>
     </div>
 
+    <div id="tabTitikView" class="card hidden">
+      <h2>Tambah Titik Patroli</h2>
+      <label>Nama lokasi</label>
+      <input id="tLokasi" placeholder="mis. Pintu Belakang Lt.1" />
+      <div style="margin-top:12px"><button onclick="addTitik()">Tambah Titik & Buat QR</button></div>
+      <div id="titikMsg" class="msg hidden"></div>
+      <h2 style="margin-top:18px">Daftar Titik & QR</h2>
+      <div class="row" style="margin-bottom:10px">
+        <button class="secondary" onclick="loadTitik()">Muat Ulang</button>
+        <button class="secondary" onclick="cetakQr()">Cetak Semua QR</button>
+      </div>
+      <div id="titikList"></div>
+    </div>
+
     <div id="tabLaporanView" class="card hidden">
       <h2>Laporan Patroli Terbaru</h2>
       <div style="overflow-x:auto"><table>
@@ -157,7 +176,7 @@
 
 <script>
 /* ============ KONFIGURASI ============ */
-const API_URL = 'https://script.google.com/macros/s/AKfycbxCCtFRH-57x1opHqZeVbd71p1wnkW1hHMLwJkx0PLXYwGuruhu9_6pf0uFGT3TGRF3/exec'; // contoh: https://script.google.com/macros/s/xxxx/exec
+const API_URL = 'PASTE_URL_APPS_SCRIPT_DI_SINI'; // contoh: https://script.google.com/macros/s/xxxx/exec
 
 /* ============ STATE ============ */
 let session = null;          // { username, pin, role }
@@ -249,19 +268,30 @@ async function stopScan() {
   scanning = false;
   show($('startScanBtn'), true); show($('stopScanBtn'), false);
 }
-function onQrScanned(text) {
-  if (pendingKode) return;               // sedang mengisi form, abaikan scan lain
+let scanBusy = false;
+async function onQrScanned(text) {
+  if (pendingKode || scanBusy) return;   // sedang mengisi form atau memvalidasi, abaikan scan lain
   const kode = String(text).trim();
   if (items.some(i => i.kode === kode)) {
     showMsg($('scanMsg'), 'Titik ' + kode + ' sudah di-scan.', false);
     return;
   }
-  pendingKode = kode;
-  $('formKode').textContent = kode;
-  $('fLokasi').value = ''; $('fKondisi').value = 'Aman'; $('fCatatan').value = '';
-  show($('formCard'), true);
-  $('fLokasi').focus();
-  show($('scanMsg'), false);
+  scanBusy = true;
+  try {
+    // Validasi ke server: QR harus terdaftar dan aktif
+    const r = await api('getTitik', { kode });
+    if (!r.ok) return showMsg($('scanMsg'), r.error, false);
+    pendingKode = kode;
+    $('formKode').textContent = kode;
+    $('fLokasi').value = r.lokasi;
+    $('fKondisi').value = 'Aman'; $('fCatatan').value = '';
+    show($('formCard'), true);
+    show($('scanMsg'), false);
+  } catch (e) {
+    showMsg($('scanMsg'), 'Gagal memvalidasi QR. Periksa koneksi internet.', false);
+  } finally {
+    scanBusy = false;
+  }
 }
 function cancelForm() { pendingKode = null; show($('formCard'), false); }
 function saveItem() {
@@ -306,12 +336,81 @@ async function kirimLaporan() {
 
 /* ============ ADMIN ============ */
 function switchTab(t) {
-  ['patroli','users','laporan'].forEach(x => $('tab' + x[0].toUpperCase() + x.slice(1)).classList.toggle('active', x === t));
-  show($('tabUsersView'), t === 'users');
-  show($('tabLaporanView'), t === 'laporan');
+  const tabs = {
+    users:   ['tabUsers',   'tabUsersView'],
+    titik:   ['tabTitik',   'tabTitikView'],
+    laporan: ['tabLaporan', 'tabLaporanView']
+  };
+  Object.entries(tabs).forEach(([key, [btn, view]]) => {
+    $(btn).classList.toggle('active', key === t);
+    show($(view), key === t);
+  });
   if (t === 'users') loadUsers();
+  if (t === 'titik') loadTitik();
   if (t === 'laporan') loadLaporan();
-  if (t === 'patroli') { show($('adminView'), true); }
+}
+
+/* ============ TITIK & QR (admin) ============ */
+let titikCache = [];
+const qrUrl = kode => 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=' + encodeURIComponent(kode);
+
+async function loadTitik() {
+  const r = await api('listTitik');
+  if (!r.ok) return $('titikList').innerHTML = `<div class="msg err">${esc(r.error)}</div>`;
+  titikCache = r.titik;
+  renderTitik();
+}
+function renderTitik() {
+  if (!titikCache.length) { $('titikList').innerHTML = '<p class="small">Belum ada titik. Tambahkan titik di atas.</p>'; return; }
+  $('titikList').innerHTML = titikCache.map(t => `
+    <div class="item">
+      <div class="top"><span>${esc(t.lokasi)}</span>
+        <span class="badge ${t.aktif ? 'b-aman' : 'b-off'}">${t.aktif ? 'Aktif' : 'Nonaktif'}</span></div>
+      <div class="small">Kode: ${esc(t.kode)}</div>
+      <div class="titik-body">
+        <img class="qr-thumb" src="${qrUrl(t.kode)}" alt="QR ${esc(t.kode)}" loading="lazy" />
+        <div class="acts">
+          <button class="secondary" onclick="editLokasi('${esc(t.kode)}')">Ubah Lokasi</button>
+          <button class="${t.aktif ? 'danger' : ''}" onclick="toggleTitik('${esc(t.kode)}', ${!t.aktif})">${t.aktif ? 'Nonaktifkan' : 'Aktifkan'}</button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+async function addTitik() {
+  const lokasi = $('tLokasi').value.trim();
+  if (!lokasi) return showMsg($('titikMsg'), 'Nama lokasi wajib diisi', false);
+  const r = await api('addTitik', { lokasi });
+  if (!r.ok) return showMsg($('titikMsg'), r.error, false);
+  showMsg($('titikMsg'), 'Titik ditambahkan dengan kode ' + r.kode + '.', true);
+  $('tLokasi').value = '';
+  loadTitik();
+}
+async function editLokasi(kode) {
+  const cur = titikCache.find(t => t.kode === kode);
+  const baru = prompt('Nama lokasi baru:', cur ? cur.lokasi : '');
+  if (!baru || !baru.trim()) return;
+  const r = await api('updateTitik', { kode, lokasi: baru.trim() });
+  if (!r.ok) alert(r.error);
+  loadTitik();
+}
+async function toggleTitik(kode, aktif) {
+  const r = await api('updateTitik', { kode, aktif });
+  if (!r.ok) alert(r.error);
+  loadTitik();
+}
+function cetakQr() {
+  const aktif = titikCache.filter(t => t.aktif);
+  if (!aktif.length) return alert('Belum ada titik aktif untuk dicetak');
+  const w = window.open('', '_blank');
+  if (!w) return alert('Pop-up diblokir browser. Izinkan pop-up untuk situs ini.');
+  const cards = aktif.map(t => `<div class="q"><img src="${qrUrl(t.kode)}" alt=""><div><b>${esc(t.lokasi)}</b></div><div class="k">${esc(t.kode)}</div></div>`).join('');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>QR Patroli</title><style>
+    body{font-family:system-ui,sans-serif;display:flex;flex-wrap:wrap;gap:14px;padding:16px}
+    .q{width:200px;text-align:center;border:1px solid #ccc;border-radius:8px;padding:10px;page-break-inside:avoid}
+    .q img{width:180px;height:180px}.k{font-size:11px;color:#555}
+  </style></head><body>${cards}</body></html>`);
+  w.document.close();
+  setTimeout(() => w.print(), 800);
 }
 async function loadUsers() {
   const r = await api('listUsers');
