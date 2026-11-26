@@ -48,6 +48,15 @@
   .hak-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:8px; }
   .hak-grid label { margin:0; display:flex; align-items:center; gap:6px; color:#0f172a; font-size:13px; }
   .hak-grid input { width:auto; }
+  .kondisi-group { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-top:4px; }
+  .kondisi-group button { font-size:13px; padding:10px 6px; background:#e2e8f0; color:#0f172a; }
+  .kondisi-group button.on-aman { background:var(--ok); color:#fff; }
+  .kondisi-group button.on-temuan { background:var(--warn); color:#fff; }
+  .kondisi-group button.on-tl { background:var(--danger); color:#fff; }
+  .foto-row { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  .foto-thumb { position:relative; width:76px; height:76px; }
+  .foto-thumb img { width:100%; height:100%; object-fit:cover; border-radius:8px; border:1px solid #e2e8f0; }
+  .foto-thumb button { position:absolute; top:2px; right:2px; width:auto; padding:2px 7px; font-size:12px; border-radius:999px; background:rgba(0,0,0,.6); }
 </style>
 </head>
 <body>
@@ -123,13 +132,17 @@
       <label>Lokasi (dari data titik)</label>
       <input id="fLokasi" readonly />
       <label>Kondisi</label>
-      <select id="fKondisi">
-        <option value="Aman">Aman</option>
-        <option value="Perlu Perhatian">Perlu Perhatian</option>
-        <option value="Darurat">Darurat</option>
-      </select>
-      <label>Catatan</label>
-      <textarea id="fCatatan" placeholder="Temuan, kondisi kunci, lampu, pintu, dll."></textarea>
+      <div class="kondisi-group">
+        <button type="button" data-k="Aman" onclick="setKondisi('Aman')">Aman</button>
+        <button type="button" data-k="Ada Temuan" onclick="setKondisi('Ada Temuan')">Ada Temuan</button>
+        <button type="button" data-k="Perlu Tindak Lanjut" onclick="setKondisi('Perlu Tindak Lanjut')">Perlu Tindak Lanjut</button>
+      </div>
+      <label>Catatan <span id="catatanWajib" class="small"></span></label>
+      <textarea id="fCatatan" placeholder="Tulis catatan temuan atau kondisi"></textarea>
+      <label>Foto (maks. 3)</label>
+      <input id="fFotoInput" type="file" accept="image/*" capture="environment" multiple onchange="addFotos(this)" />
+      <div class="small" id="fotoInfo">0 / 3 foto</div>
+      <div class="foto-row" id="fotoPreview"></div>
       <div class="row" style="margin-top:12px">
         <button class="secondary" onclick="cancelForm()">Batal</button>
         <button onclick="saveItem()">Simpan Titik</button>
@@ -186,7 +199,7 @@
     <div id="tabLaporanView" class="card hidden">
       <h2>Laporan Patroli Terbaru</h2>
       <div style="overflow-x:auto"><table>
-        <thead><tr><th>Waktu</th><th>Petugas</th><th>Patroli</th><th>Titik</th><th>Kondisi</th><th>Catatan</th></tr></thead>
+        <thead><tr><th>Waktu</th><th>Petugas</th><th>Patroli</th><th>Titik</th><th>Kondisi</th><th>Catatan</th><th>Foto</th></tr></thead>
         <tbody id="laporanBody"></tbody>
       </table></div>
       <div style="margin-top:10px"><button class="secondary" onclick="loadLaporan()">Muat Ulang</button></div>
@@ -211,6 +224,9 @@ const SESSION_KEY = 'sp_session';
 const $ = id => document.getElementById(id);
 function show(el, on) { el.classList.toggle('hidden', !on); }
 function showMsg(el, text, ok) { el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); show(el, true); }
+function kondisiClass(k) {
+  return k === 'Ada Temuan' ? 'b-perhatian' : k === 'Perlu Tindak Lanjut' ? 'b-darurat' : 'b-aman';
+}
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 async function api(action, extra = {}) {
@@ -307,6 +323,8 @@ async function stopScan() {
   show($('startScanBtn'), true); show($('stopScanBtn'), false);
 }
 let scanBusy = false;
+let pendingKondisi = 'Aman';
+let pendingFotos = [];       // foto (dataURL JPEG yang sudah dikecilkan), maks 3
 async function onQrScanned(text) {
   if (pendingKode || scanBusy) return;   // sedang mengisi form atau memvalidasi, abaikan scan lain
   const kode = String(text).trim();
@@ -323,7 +341,7 @@ async function onQrScanned(text) {
     if (!mulaiPatroli) mulaiPatroli = new Date().toISOString();
     $('formKode').textContent = kode;
     $('fLokasi').value = r.lokasi;
-    $('fKondisi').value = 'Aman'; $('fCatatan').value = '';
+    setKondisi('Aman'); $('fCatatan').value = ''; resetFotos();
     show($('formCard'), true);
     show($('scanMsg'), false);
   } catch (e) {
@@ -332,12 +350,64 @@ async function onQrScanned(text) {
     scanBusy = false;
   }
 }
-function cancelForm() { pendingKode = null; show($('formCard'), false); }
+function cancelForm() { pendingKode = null; resetFotos(); show($('formCard'), false); }
+
+const KONDISI_CLASS = { 'Aman': 'on-aman', 'Ada Temuan': 'on-temuan', 'Perlu Tindak Lanjut': 'on-tl' };
+function setKondisi(k) {
+  pendingKondisi = k;
+  document.querySelectorAll('.kondisi-group button').forEach(b => {
+    b.className = b.dataset.k === k ? KONDISI_CLASS[k] : '';
+  });
+  // Catatan wajib jika kondisinya bukan Aman
+  $('catatanWajib').textContent = k === 'Aman' ? '' : '(wajib diisi)';
+}
+
+async function addFotos(input) {
+  const sisa = 3 - pendingFotos.length;
+  const files = [...input.files];
+  if (files.length > sisa) alert('Maksimal 3 foto per titik. Sisa slot: ' + Math.max(sisa, 0) + '.');
+  for (const f of files.slice(0, Math.max(sisa, 0))) {
+    try { pendingFotos.push(await compressImage(f)); }
+    catch (e) { alert('Foto tidak bisa dibaca: ' + f.name); }
+  }
+  input.value = '';
+  renderFotos();
+}
+function compressImage(file) {
+  // Kecilkan foto di browser (maks. 1024 px, JPEG 70%) agar ringan dikirim dan hemat Drive
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const s = Math.min(1, 1024 / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * s);
+      canvas.height = Math.round(img.height * s);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/jpeg', 0.7));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('gagal baca gambar')); };
+    img.src = url;
+  });
+}
+function renderFotos() {
+  $('fotoInfo').textContent = pendingFotos.length + ' / 3 foto';
+  $('fotoPreview').innerHTML = pendingFotos.map((d, i) =>
+    `<div class="foto-thumb"><img src="${d}" alt="Foto ${i + 1}"><button type="button" onclick="removeFoto(${i})">✕</button></div>`
+  ).join('');
+}
+function removeFoto(i) { pendingFotos.splice(i, 1); renderFotos(); }
+function resetFotos() { pendingFotos = []; renderFotos(); }
+
 function saveItem() {
   const lokasi = $('fLokasi').value.trim();
   if (!lokasi) return alert('Lokasi wajib diisi');
-  items.push({ kode: pendingKode, lokasi, kondisi: $('fKondisi').value, catatan: $('fCatatan').value.trim() });
+  const catatan = $('fCatatan').value.trim();
+  if (pendingKondisi !== 'Aman' && !catatan) return alert('Catatan wajib diisi untuk kondisi "' + pendingKondisi + '"');
+  items.push({ kode: pendingKode, lokasi, kondisi: pendingKondisi, catatan, fotos: pendingFotos.slice() });
   pendingKode = null;
+  resetFotos();
   show($('formCard'), false);
   renderItems();
 }
@@ -346,11 +416,10 @@ function renderItems() {
   $('jumlahItem').textContent = items.length;
   $('kirimBtn').disabled = items.length === 0;
   if (!items.length) { $('itemList').innerHTML = '<p class="small">Belum ada titik. Scan QR untuk memulai.</p>'; return; }
-  const cls = k => k === 'Darurat' ? 'b-darurat' : k === 'Perlu Perhatian' ? 'b-perhatian' : 'b-aman';
   $('itemList').innerHTML = items.map((it, i) => `
     <div class="item">
-      <div class="top"><span>${esc(it.lokasi)}</span><span class="badge ${cls(it.kondisi)}">${esc(it.kondisi)}</span></div>
-      <div class="small">Kode: ${esc(it.kode)}</div>
+      <div class="top"><span>${esc(it.lokasi)}</span><span class="badge ${kondisiClass(it.kondisi)}">${esc(it.kondisi)}</span></div>
+      <div class="small">Kode: ${esc(it.kode)}${it.fotos.length ? ' · 📷 ' + it.fotos.length + ' foto' : ''}</div>
       ${it.catatan ? `<div style="margin-top:6px">${esc(it.catatan)}</div>` : ''}
       <button class="secondary" style="margin-top:8px;padding:6px 10px;width:auto;font-size:12px" onclick="removeItem(${i})">Hapus</button>
     </div>`).join('');
@@ -520,13 +589,13 @@ async function saveHak(i) {
 async function loadLaporan() {
   const r = await api('listLaporan');
   if (!r.ok) return $('laporanBody').innerHTML = `<tr><td colspan="6">${esc(r.error)}</td></tr>`;
-  const cls = k => k === 'Darurat' ? 'b-darurat' : k === 'Perlu Perhatian' ? 'b-perhatian' : 'b-aman';
   $('laporanBody').innerHTML = r.laporan.slice(0, 200).map(l => `
     <tr><td>${esc(new Date(l.waktu).toLocaleString('id-ID'))}</td><td>${esc(l.username)}</td>
     <td>${esc(l.nama_patroli)}</td>
     <td>${esc(l.lokasi)}<div class="small">${esc(l.kode_qr)}</div></td>
-    <td><span class="badge ${cls(l.kondisi)}">${esc(l.kondisi)}</span></td>
-    <td>${esc(l.catatan)}</td></tr>`).join('') || '<tr><td colspan="6">Belum ada laporan.</td></tr>';
+    <td><span class="badge ${kondisiClass(l.kondisi)}">${esc(l.kondisi)}</span></td>
+    <td>${esc(l.catatan)}</td>
+    <td>${String(l.foto || '').split('\n').filter(Boolean).map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener">Foto ${i + 1}</a>`).join('<br>')}</td></tr>`).join('') || '<tr><td colspan="7">Belum ada laporan.</td></tr>';
 }
 
 /* ============ INIT ============ */
