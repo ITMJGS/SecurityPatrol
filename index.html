@@ -339,20 +339,17 @@ let pendingKondisi = 'Aman';
 let pendingFotos = [];       // foto (dataURL JPEG yang sudah dikecilkan), maks 3
 async function onQrScanned(text) {
   if (pendingKode || scanBusy) return;   // sedang mengisi form atau memvalidasi, abaikan scan lain
-  const kode = String(text).trim();
-  if (items.some(i => i.kode === kode)) {
-    showMsg($('scanMsg'), 'Titik ' + kode + ' sudah di-scan.', false);
-    return;
-  }
+  const qrText = String(text).trim();
   scanBusy = true;
   try {
-    // Validasi ke server: QR harus terdaftar dan aktif
-    const r = await api('getTitik', { kode });
+    // QR berisi nama lokasi; server mencocokkan dengan titik aktif dan mengembalikan kodenya
+    const r = await api('getTitik', { qr: qrText });
     if (!r.ok) return showMsg($('scanMsg'), r.error, false);
-    pendingKode = kode;
+    if (items.some(i => i.kode === r.kode)) return showMsg($('scanMsg'), 'Titik ' + r.lokasi + ' sudah di-scan.', false);
+    pendingKode = r.kode;
     if (!mulaiPatroli) mulaiPatroli = new Date().toISOString();
     renderMulai();
-    $('formKode').textContent = kode;
+    $('formKode').textContent = r.lokasi;
     $('fLokasi').value = r.lokasi;
     setKondisi('Aman'); $('fCatatan').value = ''; resetFotos();
     show($('formCard'), true);
@@ -536,7 +533,8 @@ function switchTab(t) {
 
 /* ============ TITIK & QR (admin) ============ */
 let titikCache = [];
-const qrUrl = kode => 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=' + encodeURIComponent(kode);
+// QR dibuat dari nama lokasi (bukan kode). Jika nama lokasi diubah, QR cetak harus dibuat ulang.
+const qrUrl = text => 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=' + encodeURIComponent(text);
 
 async function loadTitik() {
   const r = await api('listTitik');
@@ -551,7 +549,7 @@ function renderTitik() {
       <span class="titik-nama">${esc(t.lokasi)}</span>
       <span class="badge ${t.aktif ? 'b-aman' : 'b-off'}" style="align-self:flex-start">${t.aktif ? 'Aktif' : 'Nonaktif'}</span>
       <div class="small">${esc(t.kode)}</div>
-      <img class="qr-thumb" src="${qrUrl(t.kode)}" alt="QR ${esc(t.kode)}" loading="lazy" />
+      <img class="qr-thumb" src="${qrUrl(t.lokasi)}" alt="QR ${esc(t.lokasi)}" loading="lazy" />
       <button class="secondary" onclick="editLokasi('${esc(t.kode)}')">Ubah Lokasi</button>
       <button class="${t.aktif ? 'danger' : ''}" onclick="toggleTitik('${esc(t.kode)}', ${!t.aktif})">${t.aktif ? 'Nonaktifkan' : 'Aktifkan'}</button>
     </div>`).join('')}</div>`;
@@ -583,7 +581,7 @@ function cetakQr() {
   if (!aktif.length) return alert('Belum ada titik aktif untuk dicetak');
   const w = window.open('', '_blank');
   if (!w) return alert('Pop-up diblokir browser. Izinkan pop-up untuk situs ini.');
-  const cards = aktif.map(t => `<div class="q"><img src="${qrUrl(t.kode)}" alt=""><div><b>${esc(t.lokasi)}</b></div><div class="k">${esc(t.kode)}</div></div>`).join('');
+  const cards = aktif.map(t => `<div class="q"><img src="${qrUrl(t.lokasi)}" alt=""><div><b>${esc(t.lokasi)}</b></div><div class="k">${esc(t.kode)}</div></div>`).join('');
   w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>QR Patroli</title><style>
     body{font-family:system-ui,sans-serif;display:flex;flex-wrap:wrap;gap:14px;padding:16px}
     .q{width:200px;text-align:center;border:1px solid #ccc;border-radius:8px;padding:10px;page-break-inside:avoid}
