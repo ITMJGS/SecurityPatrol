@@ -219,6 +219,7 @@
       <div class="row" style="margin-bottom:12px">
         <input type="date" id="laporanTgl" onchange="renderLaporan()" />
         <button class="secondary" style="width:auto;white-space:nowrap" onclick="setSemuaTanggal()">Semua tanggal</button>
+        <button style="width:auto;white-space:nowrap" onclick="exportLaporanPdf()">Export PDF</button>
       </div>
       <div id="laporanList"></div>
       <div style="margin-top:10px"><button class="secondary" onclick="loadLaporan()">Muat Ulang</button></div>
@@ -735,6 +736,75 @@ function renderLaporan() {
       </table>
     </div>`;
   }).join('');
+}
+// Export laporan (sesuai filter tanggal) ke PDF lewat dialog cetak browser: pilih "Save as PDF"
+function exportLaporanPdf() {
+  const tgl = $('laporanTgl').value;
+  const rows = laporanCache.filter(l => !tgl || dateKeyJakarta(l.waktu) === tgl);
+  if (!rows.length) return alert('Tidak ada laporan untuk diekspor');
+
+  const judul = tgl ? 'Laporan Patroli - ' + tgl : 'Laporan Patroli - Semua tanggal';
+  const groups = new Map();
+  rows.forEach(l => {
+    const k = l.nama_patroli || '-';
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(l);
+  });
+
+  const body = [...groups.entries()].map(([nama, list]) => {
+    list.sort((a, b) => new Date(a.waktu) - new Date(b.waktu));
+    const baris = list.map((l, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${esc(fmtJam(l.waktu))}</td>
+        <td><b>${esc(l.lokasi)}</b><br><span class="kode">${esc(l.kode_qr)}</span></td>
+        <td class="kon ${kondisiPrint(l.kondisi)}">${esc(l.kondisi)}</td>
+      </tr>
+      ${(l.catatan || l.foto) ? `
+      <tr class="sub"><td></td><td colspan="3">
+        ${l.catatan ? `<div>Catatan: ${esc(l.catatan)}</div>` : ''}
+        ${String(l.foto || '').split('\n').filter(Boolean).map((u, j) => `<a href="${esc(u)}">Foto ${j + 1}</a>`).join(' · ')}
+      </td></tr>` : ''}`).join('');
+    return `
+    <section>
+      <h3>${esc(nama)}</h3>
+      <div class="meta">Petugas: ${esc(list[0].username)} · ${list.length} titik</div>
+      <table>
+        <thead><tr><th>No</th><th>Jam</th><th>Checkpoint</th><th>Kondisi</th></tr></thead>
+        <tbody>${baris}</tbody>
+      </table>
+    </section>`;
+  }).join('');
+
+  const w = window.open('', '_blank');
+  if (!w) return alert('Pop-up diblokir browser. Izinkan pop-up untuk situs ini.');
+  const cetakPada = new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' });
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(judul)}</title><style>
+    body { font-family: system-ui, sans-serif; color:#0f172a; margin:24px; font-size:13px; }
+    h1 { font-size:18px; margin:0 0 4px; }
+    .top { color:#64748b; margin-bottom:16px; }
+    section { margin-bottom:18px; }
+    h3 { font-size:14px; margin:0 0 2px; }
+    .meta { color:#64748b; font-size:12px; margin-bottom:6px; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { border-bottom:1px solid #e2e8f0; padding:6px; text-align:left; vertical-align:top; }
+    th { background:#1e3a5f; color:#fff; }
+    .kode { color:#64748b; font-size:11px; }
+    .sub td { font-size:12px; color:#334155; background:#f8fafc; }
+    a { color:#3730a3; margin-right:6px; }
+    .kon { font-weight:600; }
+    .k-aman { color:#16a34a; } .k-temuan { color:#d97706; } .k-tl { color:#dc2626; }
+    @media print { body { margin:12mm; } }
+  </style></head><body>
+    <h1>${esc(judul)}</h1>
+    <div class="top">Dicetak: ${esc(cetakPada)} WIB · ${rows.length} titik</div>
+    ${body}
+  </body></html>`);
+  w.document.close();
+  setTimeout(() => w.print(), 800);
+}
+function kondisiPrint(k) {
+  return k === 'Ada Temuan' ? 'k-temuan' : k === 'Perlu Tindak Lanjut' ? 'k-tl' : 'k-aman';
 }
 function fmtJam(w) {
   return new Date(w).toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' });
