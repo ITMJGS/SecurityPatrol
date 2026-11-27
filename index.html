@@ -616,6 +616,10 @@ async function loadUsers() {
       : `<div class="small" style="margin-top:8px">Hak akses:</div>
          <div class="hak-grid" id="hak-${i}">${hakCheckboxesHtml(u.hak)}</div>
          <button class="secondary" style="margin-top:8px;font-size:12px;padding:7px 10px;width:auto" onclick="saveHak(${i})">Simpan Hak</button>`}
+    <div class="row" style="margin-top:8px">
+      <input id="pin-${i}" inputmode="numeric" placeholder="PIN baru (4–8 digit)" style="font-size:13px;padding:7px 9px" />
+      <button class="secondary" style="width:auto;font-size:12px;padding:7px 10px" onclick="changePin(${i})">Ubah PIN</button>
+    </div>
     </div>`).join('') || '<p class="small">Belum ada user.</p>';
 }
 async function addUser() {
@@ -630,6 +634,20 @@ async function setAktif(i, aktif) {
   const r = await api('setAktif', { targetUsername: usersCache[i].username, aktif });
   if (!r.ok) alert(r.error);
   loadUsers();
+}
+async function changePin(i) {
+  const pin = $('pin-' + i).value.trim();
+  if (!/^\d{4,8}$/.test(pin)) return alert('PIN harus 4–8 digit angka');
+  const username = usersCache[i].username;
+  const r = await api('setPin', { targetUsername: username, newPin: pin });
+  if (!r.ok) return alert(r.error);
+  // Jika admin mengganti PIN sendiri, perbarui sesi agar permintaan berikutnya tetap valid
+  if (session && username === session.username) {
+    session.pin = pin;
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  }
+  $('pin-' + i).value = '';
+  alert('PIN ' + username + ' sudah diubah.');
 }
 async function saveHak(i) {
   const r = await api('setHak', { targetUsername: usersCache[i].username, hak: checkedHak('hak-' + i) });
