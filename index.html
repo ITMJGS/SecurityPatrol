@@ -51,6 +51,8 @@
   .lg tr.sub td { border-bottom:1px solid #e2e8f0; padding-top:0; }
   .chips { margin-top:4px; }
   .chip { display:inline-block; padding:3px 9px; border-radius:999px; background:#e0e7ff; color:#3730a3; font-size:12px; text-decoration:none; margin:2px 4px 2px 0; }
+  .notif-overlay { position:fixed; inset:0; background:rgba(15,23,42,.5); display:flex; align-items:center; justify-content:center; z-index:50; padding:16px; }
+  .notif-box { background:#fff; border-radius:14px; padding:20px; max-width:360px; width:100%; box-shadow:0 10px 30px rgba(0,0,0,.25); }
   .titik-grid { display:grid; grid-template-columns:repeat(2, 1fr); gap:10px; }
   @media (min-width:768px) {
     .titik-grid { grid-template-columns:repeat(4, 1fr); }
@@ -224,6 +226,19 @@
   </section>
 </main>
 
+<!-- Popup pendaftar baru (admin) -->
+<div id="notifOverlay" class="notif-overlay hidden">
+  <div class="notif-box">
+    <h2>👤 Pendaftar baru</h2>
+    <p id="notifText" style="font-size:15px;margin:0 0 6px"></p>
+    <p class="small">Berikan akses dari tab Kelola User agar petugas bisa login.</p>
+    <div class="row" style="margin-top:14px">
+      <button class="secondary" onclick="closeNotif()">Tutup</button>
+      <button onclick="openUsersFromNotif()">Buka Kelola User</button>
+    </div>
+  </div>
+</div>
+
 <script>
 /* ============ KONFIGURASI ============ */
 const API_URL = 'https://script.google.com/macros/s/AKfycbxCCtFRH-57x1opHqZeVbd71p1wnkW1hHMLwJkx0PLXYwGuruhu9_6pf0uFGT3TGRF3/exec'; // contoh: https://script.google.com/macros/s/xxxx/exec
@@ -266,6 +281,8 @@ async function doLogin() {
     if (!r.ok) return showMsg($('loginMsg'), r.error, false);
     session = { username: r.username, role: r.role, hak: r.hak || [], pin };
     sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    // Minta izin notifikasi browser (hanya saat klik login)
+    if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
     enterApp();
   } catch (e) {
     showMsg($('loginMsg'), 'Gagal terhubung ke server', false);
@@ -295,6 +312,7 @@ async function api_raw(action, body) {
 }
 function logout() {
   stopScan();
+  stopPolling();
   session = null; items = []; mulaiPatroli = null; sessionStorage.removeItem(SESSION_KEY);
   show($('loginView'), true); show($('patroliView'), false); show($('adminView'), false); show($('adminTabs'), false); show($('noAccessView'), false);
   show($('logoutBtn'), false); $('whoLabel').textContent = '';
@@ -309,6 +327,7 @@ function enterApp() {
   renderTabs();
   const tabs = allowedTabs();
   show($('noAccessView'), tabs.length === 0);
+  startPolling();
   if (tabs.length) switchTab(tabs[0].key);
 }
 
@@ -725,6 +744,66 @@ function fotoChips(foto) {
   if (!links.length) return '';
   return `<div class="chips">📷 ${links.map((u, i) => `<a class="chip" href="${esc(u)}" target="_blank" rel="noopener">Foto ${i + 1} ↗</a>`).join('')}</div>`;
 }
+
+/* ============ NOTIFIKASI PENDAFTAR (admin) ============ */
+const NOTIF_KEY = 'sp_notified';   // pendaftar yang sudah pernah dinotifikasi (per browser)
+let pollTimer = null;
+
+function notifiedSet() {
+  try { return new Set(JSON.parse(localStorage.getItem(NOTIF_KEY) || '[]')); }
+  catch (e) { return new Set(); }
+}
+function saveNotified(set) {
+  localStorage.setItem(NOTIF_KEY, JSON.stringify([...set]));
+}
+function playBeep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [0, 0.25].forEach((t, i) => {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.frequency.value = i ? 1000 : 700;
+      g.gain.value = 0.2;
+      o.connect(g); g.connect(ctx.destination);
+      o.start(ctx.currentTime + t);
+      o.stop(ctx.currentTime + t + 0.18);
+    });
+  } catch (e) { /* browser memblokir suara sampai ada interaksi */ }
+}
+function startPolling() {
+  stopPolling();
+  if (!hasHak('users')) return;
+  checkPendaftar();
+  pollTimer = setInterval(checkPendaftar, 30000);
+}
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+async function checkPendaftar() {
+  if (!session || !hasHak('users')) return;
+  const r = await api('listUsers');
+  if (!r.ok) return;
+  const pending = r.users.filter(u => !u.aktif && u.role !== 'admin').map(u => u.username);
+  const seen = notifiedSet();
+  const baru = pending.filter(u => !seen.has(u));
+  if (!baru.length) return;
+  baru.forEach(u => seen.add(u));
+  saveNotified(seen);
+  playBeep();
+  showNotif(baru);
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification('Security Patrol', { body: 'Pendaftar baru: ' + baru.join(', ') });
+  }
+  if (!$('tabUsersView').classList.contains('hidden')) loadUsers();
+}
+function showNotif(list) {
+  $('notifText').textContent = list.length === 1
+    ? list[0] + ' mendaftar dan menunggu persetujuan.'
+    : list.length + ' pendaftar baru menunggu persetujuan: ' + list.join(', ') + '.';
+  show($('notifOverlay'), true);
+}
+function closeNotif() { show($('notifOverlay'), false); }
+function openUsersFromNotif() { closeNotif(); switchTab('users'); }
 
 /* ============ INIT ============ */
 (function init() {
