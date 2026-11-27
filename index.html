@@ -214,6 +214,10 @@
 
     <div id="tabLaporanView" class="card hidden">
       <h2>Laporan Patroli Terbaru</h2>
+      <div class="row" style="margin-bottom:12px">
+        <input type="date" id="laporanTgl" onchange="renderLaporan()" />
+        <button class="secondary" style="width:auto;white-space:nowrap" onclick="setSemuaTanggal()">Semua tanggal</button>
+      </div>
       <div id="laporanList"></div>
       <div style="margin-top:10px"><button class="secondary" onclick="loadLaporan()">Muat Ulang</button></div>
     </div>
@@ -658,8 +662,24 @@ async function saveHak(i) {
 async function loadLaporan() {
   const r = await api('listLaporan');
   if (!r.ok) return $('laporanList').innerHTML = `<div class="msg err">${esc(r.error)}</div>`;
-  const rows = r.laporan.slice(0, 300);
-  if (!rows.length) return $('laporanList').innerHTML = '<p class="small">Belum ada laporan.</p>';
+  if (!$('laporanTgl').value) $('laporanTgl').value = dateKeyJakarta(new Date());
+  laporanCache = r.laporan;
+  renderLaporan();
+}
+
+let laporanCache = [];
+// Tanggal (YYYY-MM-DD) menurut zona waktu Asia/Jakarta
+function dateKeyJakarta(d) {
+  return new Date(d).toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
+}
+function setSemuaTanggal() {
+  $('laporanTgl').value = '';
+  renderLaporan();
+}
+function renderLaporan() {
+  const tgl = $('laporanTgl').value;
+  const rows = laporanCache.filter(l => !tgl || dateKeyJakarta(l.waktu) === tgl).slice(0, 300);
+  if (!rows.length) return $('laporanList').innerHTML = `<p class="small">${tgl ? 'Tidak ada laporan pada tanggal ini.' : 'Belum ada laporan.'}</p>`;
 
   // Kelompokkan per patroli; kelompok terbaru tetap di atas
   const groups = new Map();
