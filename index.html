@@ -532,23 +532,19 @@ function renderItems() {
 function kondisiCls(k) {
   return k === 'Ada Temuan' ? 'st-temuan' : k === 'Perlu Tindak Lanjut' ? 'st-tl' : 'st-aman';
 }
-function namaTitik(lokasi) {
-  const i = String(lokasi).indexOf(' - ');
-  return i > -1 ? lokasi.slice(i + 3).trim() : lokasi;
-}
 function renderChecklist() {
   if (!titikAktif.length) {
     $('checklist').innerHTML = '<p class="small">Belum ada titik aktif. Hubungi admin.</p>';
     return;
   }
-  const urut = [...titikAktif].sort((a, b) => a.lokasi.localeCompare(b.lokasi, 'id', { numeric: true }));
-  $('checklist').innerHTML = `<div class="cp-grid">${urut.map(t => {
+  // Label = nama lokasi lengkap dari sheet Titik, urutan mengikuti baris di sheet
+  $('checklist').innerHTML = `<div class="cp-grid">${titikAktif.map(t => {
     const it = items.find(i => i.kode === t.kode);
     return it
       ? `<button class="cp ${kondisiCls(it.kondisi)}" onclick="hapusDariChecklist('${esc(t.kode)}')">
-           <span>${esc(namaTitik(t.lokasi))}</span><small>${esc(it.kondisi)}</small>
+           <span>${esc(t.lokasi)}</span><small>${esc(it.kondisi)}</small>
          </button>`
-      : `<div class="cp"><span>${esc(namaTitik(t.lokasi))}</span><small>belum</small></div>`;
+      : `<div class="cp"><span>${esc(t.lokasi)}</span><small>belum</small></div>`;
   }).join('')}</div>`;
 }
 function hapusDariChecklist(kode) {
