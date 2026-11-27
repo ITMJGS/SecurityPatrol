@@ -45,6 +45,12 @@
   .titik-body { display:flex; gap:12px; align-items:center; margin-top:10px; }
   .titik-body .acts { flex:1; display:flex; flex-direction:column; gap:6px; }
   .titik-body button { font-size:12px; padding:7px 10px; }
+  .lg { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:12px; margin-bottom:12px; }
+  .lg-head { margin-bottom:8px; }
+  .lg td { vertical-align:middle; }
+  .lg tr.sub td { border-bottom:1px solid #e2e8f0; padding-top:0; }
+  .chips { margin-top:4px; }
+  .chip { display:inline-block; padding:3px 9px; border-radius:999px; background:#e0e7ff; color:#3730a3; font-size:12px; text-decoration:none; margin:2px 4px 2px 0; }
   .titik-grid { display:grid; grid-template-columns:repeat(2, 1fr); gap:10px; }
   @media (min-width:768px) {
     .titik-grid { grid-template-columns:repeat(4, 1fr); }
@@ -208,10 +214,7 @@
 
     <div id="tabLaporanView" class="card hidden">
       <h2>Laporan Patroli Terbaru</h2>
-      <div style="overflow-x:auto"><table>
-        <thead><tr><th>Waktu</th><th>Petugas</th><th>Patroli</th><th>Titik</th><th>Kondisi</th><th>Catatan</th><th>Foto</th></tr></thead>
-        <tbody id="laporanBody"></tbody>
-      </table></div>
+      <div id="laporanList"></div>
       <div style="margin-top:10px"><button class="secondary" onclick="loadLaporan()">Muat Ulang</button></div>
     </div>
   </section>
@@ -219,7 +222,7 @@
 
 <script>
 /* ============ KONFIGURASI ============ */
-const API_URL = 'https://script.google.com/macros/s/AKfycbxCCtFRH-57x1opHqZeVbd71p1wnkW1hHMLwJkx0PLXYwGuruhu9_6pf0uFGT3TGRF3/exec'; // contoh: https://script.google.com/macros/s/xxxx/exec
+const API_URL = 'PASTE_URL_APPS_SCRIPT_DI_SINI'; // contoh: https://script.google.com/macros/s/xxxx/exec
 
 /* ============ STATE ============ */
 let session = null;          // { username, pin, role }
@@ -451,7 +454,7 @@ function saveItem() {
   if (!lokasi) return alert('Lokasi wajib diisi');
   const catatan = $('fCatatan').value.trim();
   if (pendingKondisi !== 'Aman' && !catatan) return alert('Catatan wajib diisi untuk kondisi "' + pendingKondisi + '"');
-  items.push({ kode: pendingKode, lokasi, kondisi: pendingKondisi, catatan, fotos: pendingFotos.slice() });
+  items.push({ kode: pendingKode, lokasi, kondisi: pendingKondisi, catatan, fotos: pendingFotos.slice(), waktu: new Date().toISOString() });
   pendingKode = null;
   resetFotos();
   show($('formCard'), false);
@@ -636,14 +639,53 @@ async function saveHak(i) {
 }
 async function loadLaporan() {
   const r = await api('listLaporan');
-  if (!r.ok) return $('laporanBody').innerHTML = `<tr><td colspan="6">${esc(r.error)}</td></tr>`;
-  $('laporanBody').innerHTML = r.laporan.slice(0, 200).map(l => `
-    <tr><td>${esc(new Date(l.waktu).toLocaleString('id-ID'))}</td><td>${esc(l.username)}</td>
-    <td>${esc(l.nama_patroli)}</td>
-    <td>${esc(l.lokasi)}<div class="small">${esc(l.kode_qr)}</div></td>
-    <td><span class="badge ${kondisiClass(l.kondisi)}">${esc(l.kondisi)}</span></td>
-    <td>${esc(l.catatan)}</td>
-    <td>${String(l.foto || '').split('\n').filter(Boolean).map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener">Foto ${i + 1}</a>`).join('<br>')}</td></tr>`).join('') || '<tr><td colspan="7">Belum ada laporan.</td></tr>';
+  if (!r.ok) return $('laporanList').innerHTML = `<div class="msg err">${esc(r.error)}</div>`;
+  const rows = r.laporan.slice(0, 300);
+  if (!rows.length) return $('laporanList').innerHTML = '<p class="small">Belum ada laporan.</p>';
+
+  // Kelompokkan per patroli; kelompok terbaru tetap di atas
+  const groups = new Map();
+  rows.forEach(l => {
+    const k = l.nama_patroli || '-';
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(l);
+  });
+
+  $('laporanList').innerHTML = [...groups.entries()].map(([nama, list]) => {
+    list.sort((a, b) => new Date(a.waktu) - new Date(b.waktu));   // urut jam naik dalam satu patroli
+    return `
+    <div class="lg">
+      <div class="lg-head">
+        <b>${esc(nama)}</b>
+        <div class="small">Petugas: ${esc(list[0].username)} · ${list.length} titik</div>
+      </div>
+      <table>
+        <thead><tr><th style="width:36px">No</th><th style="width:60px">Jam</th><th>Checkpoint</th><th>Kondisi</th></tr></thead>
+        <tbody>
+          ${list.map((l, i) => `
+          <tr>
+            <td>${i + 1}</td>
+            <td>${esc(fmtJam(l.waktu))}</td>
+            <td><b>${esc(l.lokasi)}</b><div class="small">${esc(l.kode_qr)}</div></td>
+            <td><span class="badge ${kondisiClass(l.kondisi)}">${esc(l.kondisi)}</span></td>
+          </tr>
+          ${(l.catatan || l.foto) ? `
+          <tr class="sub"><td></td><td colspan="3">
+            ${l.catatan ? `<div class="small">📝 ${esc(l.catatan)}</div>` : ''}
+            ${fotoChips(l.foto)}
+          </td></tr>` : ''}`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+  }).join('');
+}
+function fmtJam(w) {
+  return new Date(w).toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' });
+}
+function fotoChips(foto) {
+  const links = String(foto || '').split('\n').filter(Boolean);
+  if (!links.length) return '';
+  return `<div class="chips">📷 ${links.map((u, i) => `<a class="chip" href="${esc(u)}" target="_blank" rel="noopener">Foto ${i + 1} ↗</a>`).join('')}</div>`;
 }
 
 /* ============ INIT ============ */
