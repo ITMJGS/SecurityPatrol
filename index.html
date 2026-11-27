@@ -163,12 +163,7 @@
       <div class="pt-bar"><div id="progressBar"></div></div>
     </div>
 
-    <div class="row" style="margin-bottom:14px">
-      <button id="startScanBtn" class="btn-amber" onclick="toggleKamera()">Buka Kamera</button>
-      <button class="secondary" onclick="pilihFotoQr()">Foto QR</button>
-    </div>
-    <input type="file" id="qrFileInput" accept="image/*" class="hidden" onchange="scanFotoQr(this)" />
-    <div id="qrFileHidden" class="hidden"></div>
+    <button id="startScanBtn" class="btn-amber" style="margin-bottom:14px" onclick="toggleKamera()">Buka Kamera</button>
 
     <div class="card hidden" id="kameraCard">
       <div id="reader"></div>
@@ -396,21 +391,6 @@ async function stopScan() {
   scanning = false;
   $('startScanBtn').textContent = 'Buka Kamera';
 }
-// Foto QR: baca QR dari gambar yang dipilih (misalnya foto dari galeri)
-function pilihFotoQr() { $('qrFileInput').click(); }
-async function scanFotoQr(input) {
-  const file = input.files[0];
-  input.value = '';
-  if (!file) return;
-  if (!window.Html5Qrcode) return alert('Library scanner gagal dimuat. Periksa koneksi internet.');
-  try {
-    const h = new Html5Qrcode('qrFileHidden');
-    const text = await h.scanFile(file, false);
-    onQrScanned(text);
-  } catch (e) {
-    alert('QR tidak terbaca dari foto ini. Coba foto yang lebih jelas.');
-  }
-}
 let scanBusy = false;
 let pendingKondisi = 'Aman';
 let pendingFotos = [];       // foto (dataURL JPEG yang sudah dikecilkan), maks 3
@@ -552,11 +532,6 @@ function renderItems() {
 function kondisiCls(k) {
   return k === 'Ada Temuan' ? 'st-temuan' : k === 'Perlu Tindak Lanjut' ? 'st-tl' : 'st-aman';
 }
-// "Lt 32 - Gatsu Timur" -> lantai "Lantai 32"; lokasi tanpa pola lantai -> "Lainnya"
-function floorOf(lokasi) {
-  const m = /^lt\.?\s*(\d+)/i.exec(String(lokasi).trim());
-  return m ? 'Lantai ' + m[1] : 'Lainnya';
-}
 function namaTitik(lokasi) {
   const i = String(lokasi).indexOf(' - ');
   return i > -1 ? lokasi.slice(i + 3).trim() : lokasi;
@@ -566,36 +541,15 @@ function renderChecklist() {
     $('checklist').innerHTML = '<p class="small">Belum ada titik aktif. Hubungi admin.</p>';
     return;
   }
-  const groups = new Map();
-  titikAktif.forEach(t => {
-    const f = floorOf(t.lokasi);
-    if (!groups.has(f)) groups.set(f, []);
-    groups.get(f).push(t);
-  });
-  // Lantai tertinggi di atas, "Lainnya" di paling bawah
-  const keys = [...groups.keys()].sort((a, b) => {
-    if (a === 'Lainnya') return 1;
-    if (b === 'Lainnya') return -1;
-    return parseInt(b.replace(/\D/g, ''), 10) - parseInt(a.replace(/\D/g, ''), 10);
-  });
-  $('checklist').innerHTML = keys.map(f => {
-    const list = groups.get(f);
-    const doneCount = list.filter(t => items.some(i => i.kode === t.kode)).length;
-    return `
-    <div class="floor">
-      <div class="floor-head"><b>${esc(f)}</b><span class="small">${doneCount}/${list.length}</span></div>
-      <div class="cp-grid">
-        ${list.map(t => {
-          const it = items.find(i => i.kode === t.kode);
-          return it
-            ? `<button class="cp ${kondisiCls(it.kondisi)}" onclick="hapusDariChecklist('${esc(t.kode)}')">
-                 <span>${esc(namaTitik(t.lokasi))}</span><small>${esc(it.kondisi)}</small>
-               </button>`
-            : `<div class="cp"><span>${esc(namaTitik(t.lokasi))}</span><small>belum</small></div>`;
-        }).join('')}
-      </div>
-    </div>`;
-  }).join('');
+  const urut = [...titikAktif].sort((a, b) => a.lokasi.localeCompare(b.lokasi, 'id', { numeric: true }));
+  $('checklist').innerHTML = `<div class="cp-grid">${urut.map(t => {
+    const it = items.find(i => i.kode === t.kode);
+    return it
+      ? `<button class="cp ${kondisiCls(it.kondisi)}" onclick="hapusDariChecklist('${esc(t.kode)}')">
+           <span>${esc(namaTitik(t.lokasi))}</span><small>${esc(it.kondisi)}</small>
+         </button>`
+      : `<div class="cp"><span>${esc(namaTitik(t.lokasi))}</span><small>belum</small></div>`;
+  }).join('')}</div>`;
 }
 function hapusDariChecklist(kode) {
   const idx = items.findIndex(i => i.kode === kode);
