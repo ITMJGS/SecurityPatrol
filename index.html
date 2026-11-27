@@ -74,6 +74,29 @@
   .foto-thumb { position:relative; width:76px; height:76px; }
   .foto-thumb img { width:100%; height:100%; object-fit:cover; border-radius:8px; border:1px solid #e2e8f0; }
   .foto-thumb button { position:absolute; top:2px; right:2px; width:auto; padding:2px 7px; font-size:12px; border-radius:999px; background:rgba(0,0,0,.6); }
+  /* ---- Halaman patroli ---- */
+  .patrol { padding-bottom:90px; }
+  .pt-head { display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px; font-size:14px; }
+  .pt-progress-row { display:flex; justify-content:space-between; align-items:baseline; margin-top:10px; }
+  .pt-count { font-size:20px; font-weight:700; }
+  .pt-bar { height:8px; background:#e2e8f0; border-radius:99px; overflow:hidden; margin-top:6px; }
+  .pt-bar > div { height:100%; width:0; background:var(--ok); transition:width .3s; }
+  .btn-amber { background:#c8993b; color:#fff; }
+  .floor { margin-bottom:14px; }
+  .floor-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:15px; }
+  .cp-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .cp { border:1px dashed #cbd5e1; border-radius:10px; padding:10px 6px; text-align:center; background:#f8fafc; color:#64748b; display:flex; flex-direction:column; gap:2px; font-size:14px; min-height:66px; justify-content:center; font-weight:400; }
+  .cp small { font-size:12px; }
+  button.cp { width:100%; font-weight:600; color:#0f172a; background:#fff; border:1px solid #cbd5e1; }
+  button.cp.st-aman { border-color:var(--ok); background:#f0fdf4; }
+  button.cp.st-temuan { border-color:var(--warn); background:#fffbeb; }
+  button.cp.st-tl { border-color:var(--danger); background:#fef2f2; }
+  .bottom-bar { position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:640px; background:#fff; padding:10px 16px; display:flex; gap:10px; box-shadow:0 -2px 8px rgba(0,0,0,.08); z-index:20; }
+  @media (min-width:768px) { .bottom-bar { max-width:960px; } }
+  .bottom-bar > button { flex:1; width:auto; }
+  .bottom-bar .batal { background:#fee2e2; color:#dc2626; }
+  .bottom-bar .kirim { background:var(--ok); }
+  .bottom-bar .kirim:disabled { background:var(--ok); opacity:.5; }
 </style>
 </head>
 <body>
@@ -127,20 +150,28 @@
   </div>
 
   <!-- PATROLI (semua user yang punya hak patroli) -->
-  <section id="patroliView" class="hidden">
+  <section id="patroliView" class="hidden patrol">
     <div class="card">
-      <h2>Patroli Anda</h2>
-      <div class="small">Petugas: <b id="patroliUser"></b></div>
-      <div class="small">Mulai patroli: <b id="patroliMulai">Belum dimulai</b></div>
+      <div class="pt-head">
+        <span>Petugas: <b id="patroliUser"></b></span>
+        <span class="small">Mulai: <b id="patroliMulai">Belum dimulai</b></span>
+      </div>
+      <div class="pt-progress-row">
+        <span id="progressText" class="pt-count">0 / 0</span>
+        <span class="small">titik sudah di-scan</span>
+      </div>
+      <div class="pt-bar"><div id="progressBar"></div></div>
     </div>
 
-    <div class="card">
-      <h2>Scan QR Titik Patroli</h2>
+    <div class="row" style="margin-bottom:14px">
+      <button id="startScanBtn" class="btn-amber" onclick="toggleKamera()">Buka Kamera</button>
+      <button class="secondary" onclick="pilihFotoQr()">Foto QR</button>
+    </div>
+    <input type="file" id="qrFileInput" accept="image/*" class="hidden" onchange="scanFotoQr(this)" />
+    <div id="qrFileHidden" class="hidden"></div>
+
+    <div class="card hidden" id="kameraCard">
       <div id="reader"></div>
-      <div class="row" style="margin-top:10px">
-        <button id="startScanBtn" onclick="startScan()">Aktifkan Kamera</button>
-        <button id="stopScanBtn" class="secondary hidden" onclick="stopScan()">Hentikan</button>
-      </div>
       <div id="scanMsg" class="msg err hidden"></div>
     </div>
 
@@ -167,18 +198,17 @@
       </div>
     </div>
 
-    <!-- Daftar titik -->
+    <!-- Daftar titik cek per lantai -->
     <div class="card">
-      <h2>Titik Terisi (<span id="jumlahItem">0</span>)</h2>
-      <div id="itemList"><p class="small">Belum ada titik. Scan QR untuk memulai.</p></div>
+      <h2>Daftar titik cek</h2>
+      <div id="checklist"></div>
     </div>
 
-    <!-- Tombol kirim di akhir pengisian -->
-    <div class="card">
-      <button id="kirimBtn" class="danger" disabled onclick="kirimLaporan()">Kirim Laporan Patroli</button>
-      <div class="small" style="margin-top:6px;text-align:center">Laporan dikirim ke spreadsheet dan tidak bisa diubah dari aplikasi.</div>
-      <div id="kirimMsg" class="msg hidden"></div>
+    <div class="bottom-bar">
+      <button class="batal" onclick="batalkanPatroli()">Batalkan</button>
+      <button id="kirimBtn" class="kirim" disabled onclick="kirimLaporan()">Kirim (0/0)</button>
     </div>
+    <div id="kirimMsg" class="msg hidden"></div>
   </section>
 
   <!-- ADMIN -->
@@ -333,6 +363,11 @@ function enterApp() {
 }
 
 /* ============ SCAN QR (kamera belakang) ============ */
+function toggleKamera() {
+  if (scanning) { stopScan(); show($('kameraCard'), false); return; }
+  show($('kameraCard'), true);
+  startScan();
+}
 async function startScan() {
   if (!window.Html5Qrcode) return showMsg($('scanMsg'), 'Library scanner gagal dimuat. Periksa koneksi internet.', false);
   show($('scanMsg'), false);
@@ -348,7 +383,7 @@ async function startScan() {
       await qr.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 240, height: 240 } }, onQrScanned, () => {});
     });
     scanning = true;
-    show($('startScanBtn'), false); show($('stopScanBtn'), true);
+    $('startScanBtn').textContent = 'Tutup Kamera';
   } catch (e) {
     const denied = /NotAllowed|Permission/i.test(e?.name || e?.message || '');
     showMsg($('scanMsg'), denied
@@ -359,7 +394,22 @@ async function startScan() {
 async function stopScan() {
   if (qr && scanning) { try { await qr.stop(); qr.clear(); } catch(_){} }
   scanning = false;
-  show($('startScanBtn'), true); show($('stopScanBtn'), false);
+  $('startScanBtn').textContent = 'Buka Kamera';
+}
+// Foto QR: baca QR dari gambar yang dipilih (misalnya foto dari galeri)
+function pilihFotoQr() { $('qrFileInput').click(); }
+async function scanFotoQr(input) {
+  const file = input.files[0];
+  input.value = '';
+  if (!file) return;
+  if (!window.Html5Qrcode) return alert('Library scanner gagal dimuat. Periksa koneksi internet.');
+  try {
+    const h = new Html5Qrcode('qrFileHidden');
+    const text = await h.scanFile(file, false);
+    onQrScanned(text);
+  } catch (e) {
+    alert('QR tidak terbaca dari foto ini. Coba foto yang lebih jelas.');
+  }
 }
 let scanBusy = false;
 let pendingKondisi = 'Aman';
@@ -491,16 +541,84 @@ function renderMulai() {
     : 'Belum dimulai';
 }
 function renderItems() {
-  $('jumlahItem').textContent = items.length;
-  $('kirimBtn').disabled = items.length === 0;
-  if (!items.length) { $('itemList').innerHTML = '<p class="small">Belum ada titik. Scan QR untuk memulai.</p>'; return; }
-  $('itemList').innerHTML = items.map((it, i) => `
-    <div class="item">
-      <div class="top"><span>${esc(it.lokasi)}</span><span class="badge ${kondisiClass(it.kondisi)}">${esc(it.kondisi)}</span></div>
-      <div class="small">Kode: ${esc(it.kode)}${it.fotos.length ? ' · 📷 ' + it.fotos.length + ' foto' : ''}</div>
-      ${it.catatan ? `<div style="margin-top:6px">${esc(it.catatan)}</div>` : ''}
-      <button class="secondary" style="margin-top:8px;padding:6px 10px;width:auto;font-size:12px" onclick="removeItem(${i})">Hapus</button>
-    </div>`).join('');
+  const total = titikAktif.length;
+  const done = items.length;
+  $('progressText').textContent = done + ' / ' + total;
+  $('progressBar').style.width = (total ? Math.round(done / total * 100) : 0) + '%';
+  $('kirimBtn').disabled = done === 0;
+  $('kirimBtn').textContent = 'Kirim (' + done + '/' + total + ')';
+  renderChecklist();
+}
+function kondisiCls(k) {
+  return k === 'Ada Temuan' ? 'st-temuan' : k === 'Perlu Tindak Lanjut' ? 'st-tl' : 'st-aman';
+}
+// "Lt 32 - Gatsu Timur" -> lantai "Lantai 32"; lokasi tanpa pola lantai -> "Lainnya"
+function floorOf(lokasi) {
+  const m = /^lt\.?\s*(\d+)/i.exec(String(lokasi).trim());
+  return m ? 'Lantai ' + m[1] : 'Lainnya';
+}
+function namaTitik(lokasi) {
+  const i = String(lokasi).indexOf(' - ');
+  return i > -1 ? lokasi.slice(i + 3).trim() : lokasi;
+}
+function renderChecklist() {
+  if (!titikAktif.length) {
+    $('checklist').innerHTML = '<p class="small">Belum ada titik aktif. Hubungi admin.</p>';
+    return;
+  }
+  const groups = new Map();
+  titikAktif.forEach(t => {
+    const f = floorOf(t.lokasi);
+    if (!groups.has(f)) groups.set(f, []);
+    groups.get(f).push(t);
+  });
+  // Lantai tertinggi di atas, "Lainnya" di paling bawah
+  const keys = [...groups.keys()].sort((a, b) => {
+    if (a === 'Lainnya') return 1;
+    if (b === 'Lainnya') return -1;
+    return parseInt(b.replace(/\D/g, ''), 10) - parseInt(a.replace(/\D/g, ''), 10);
+  });
+  $('checklist').innerHTML = keys.map(f => {
+    const list = groups.get(f);
+    const doneCount = list.filter(t => items.some(i => i.kode === t.kode)).length;
+    return `
+    <div class="floor">
+      <div class="floor-head"><b>${esc(f)}</b><span class="small">${doneCount}/${list.length}</span></div>
+      <div class="cp-grid">
+        ${list.map(t => {
+          const it = items.find(i => i.kode === t.kode);
+          return it
+            ? `<button class="cp ${kondisiCls(it.kondisi)}" onclick="hapusDariChecklist('${esc(t.kode)}')">
+                 <span>${esc(namaTitik(t.lokasi))}</span><small>${esc(it.kondisi)}</small>
+               </button>`
+            : `<div class="cp"><span>${esc(namaTitik(t.lokasi))}</span><small>belum</small></div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+function hapusDariChecklist(kode) {
+  const idx = items.findIndex(i => i.kode === kode);
+  if (idx < 0) return;
+  if (confirm('Hapus titik ini dari patroli?')) removeItem(idx);
+}
+function batalkanPatroli() {
+  if (!items.length && !pendingKode) return;
+  if (!confirm('Batalkan patroli dan hapus semua titik yang sudah di-scan?')) return;
+  items = [];
+  mulaiPatroli = null;
+  cancelForm();
+  renderItems();
+  renderMulai();
+}
+
+/* ============ DAFTAR TITIK AKTIF (checklist patroli) ============ */
+let titikAktif = [];
+async function loadTitikAktif() {
+  const r = await api('listTitikAktif');
+  if (!r.ok) return showMsg($('scanMsg'), r.error, false);
+  titikAktif = r.titik;
+  renderItems();
 }
 
 /* ============ KIRIM LAPORAN ============ */
@@ -553,6 +671,7 @@ function switchTab(t) {
     if (btn) btn.classList.toggle('active', d.key === t);
     if (d.key !== 'patroli') show($(d.view), d.key === t);
   });
+  if (t === 'patroli') loadTitikAktif();
   if (t === 'users') loadUsers();
   if (t === 'titik') loadTitik();
   if (t === 'laporan') loadLaporan();
